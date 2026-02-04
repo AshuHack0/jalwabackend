@@ -1,34 +1,51 @@
-import { Elysia } from "elysia";
-import { cors } from "@elysiajs/cors";
+import express from "express";
+import cors from "cors";
 import routes from "./routes/index.js";
-import { morganMiddleware } from "./middleware/morgan.middleware.js";
+import morgan from "morgan";
+import { env } from "./config/env.js";
+import connectDB from "./config/database.js";
 
-const app = new Elysia()
-  .use(cors())
-  .use(morganMiddleware)
-  .get("/", () => ({
+// Connect to Database
+connectDB();
+
+const app = express();
+
+// Middleware
+app.use(cors({ origin: "*" }));
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+app.use(morgan(env.NODE_ENV === "development" ? "dev" : "combined"));
+
+// Root route
+app.get("/", (req, res) => {
+  res.status(200).json({
     message: "Welcome to Jalwa Backend API",
     version: "1.0.0",
-  }))
-  .use(routes)
-  .onError(({ code, error, set }) => {
-    if (code === "NOT_FOUND") {
-      set.status = 404;
-      return {
-        success: false,
-        message: "Route not found",
-      };
-    }
-    set.status = 500;
-    return {
-      success: false,
-      message: error.message || "Internal server error",
-    };
-  })
-  .listen(process.env.PORT || 3001);
+  });
+});
 
-console.log(
-  `🦊 Server is running at http://${app.server?.hostname}:${app.server?.port}`
-);
+// V1 Routes
+app.use("/api/v1", routes);
+
+// 404 Handler
+app.use((req, res) => {
+  res.status(404).json({
+    success: false,
+    message: "Route not found",
+  });
+});
+
+// Error Handler
+app.use((err, req, res, next) => {
+  console.error(err.stack);
+  res.status(500).json({
+    success: false,
+    message: err.message || "Internal server error",
+  });
+});
+
+app.listen(env.PORT, () => {
+  console.log(`🚀 Server is running at http://localhost:${env.PORT}`);
+});
 
 export default app;

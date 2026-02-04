@@ -1,9 +1,9 @@
-import { Elysia } from "elysia";
-import healthRoutes from "./health.routes.js";
-import apiRoutes from "./api.routes.js";
+import express from "express";
 
-const routes = new Elysia()
-  .use(healthRoutes)
-  .use(apiRoutes);
+const routes = express.Router();
+
+routes.get("/", (req, res) => {
+  res.json({ message: "Welcome to the API!" });
+});
 
 export default routes;
