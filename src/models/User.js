@@ -1,5 +1,4 @@
 import mongoose from "mongoose";
-import bcrypt from "bcryptjs";
 
 const userSchema = new mongoose.Schema(
     {
@@ -42,6 +41,26 @@ const userSchema = new mongoose.Schema(
         lastLogin: {
             type: Date,
             default: Date.now,
+        },
+        walletBalance: {
+            type: Number,
+            default: 0,
+            min: 0,
+        },
+        totalDeposited: {
+            type: Number,
+            default: 0,
+            min: 0,
+        },
+        winGoLossStreak: {
+            type: Number,
+            default: 0,
+            min: 0,
+        },
+        winGoWinStreak: {
+            type: Number,
+            default: 0,
+            min: 0,
         },
     },
     {

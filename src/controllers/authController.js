@@ -1,36 +1,24 @@
-import jwt from "jsonwebtoken";
 import { v4 as uuidv4 } from "uuid";
-import User from "../models/User.js";
 import { env } from "../config/env.js";
+import { generateToken } from "../utils/jwt.js";
+import User from "../models/User.js";
 
-// Helper to create JWT
-const generateToken = (id) => {
-    return jwt.sign({ id }, env.JWT_SECRET, {
-        expiresIn: env.JWT_EXPIRES_IN,
-    });
-};
-
+// Registers a new user using phone, password and invite code.
+// Requires validate(registerSchema) middleware - uses req.validated.
 export const register = async (req, res, next) => {
     try {
-        const { phone, password, inviteCode } = req.body;
+        const { phone, password, inviteCode } = req.validated;
 
-        if (!phone || !password) {
-            return res.status(400).json({
-                success: false,
-                message: "Phone number and password are required",
-            });
-        }
-
-        if (!inviteCode || inviteCode !== env.INVITE_CODE) {
+        if (inviteCode !== env.INVITE_CODE) {
             return res.status(400).json({
                 success: false,
                 message: "Invalid invite code",
             });
         }
 
-        const userExists = await User.findOne({ phone });
+        const existingUser = await User.findOne({ phone });
 
-        if (userExists) {
+        if (existingUser) {
             return res.status(400).json({
                 success: false,
                 message: "User already exists with this phone number",
@@ -94,17 +82,11 @@ export const register = async (req, res, next) => {
     }
 };
 
-
+// Logs in an existing user with phone and password.
+// Requires validate(loginSchema) middleware - uses req.validated.
 export const login = async (req, res, next) => {
     try {
-        const { phone, password } = req.body;
-
-        if (!phone || !password) {
-            return res.status(400).json({
-                success: false,
-                message: "Please provide phone number and password",
-            });
-        }
+        const { phone, password } = req.validated;
 
         const user = await User.findOne({ phone }).select("+password");
 
@@ -141,7 +123,20 @@ export const login = async (req, res, next) => {
     }
 };
 
+// Returns the authenticated user's wallet balance only.
+export const getWalletBalance = async (req, res, next) => {
+    try {
+        const user = await User.findById(req.user.id).select("walletBalance");
+        res.status(200).json({
+            success: true,
+            data: { balance: user?.walletBalance ?? 0 },
+        });
+    } catch (error) {
+        next(error);
+    }
+};
 
+// Returns the currently authenticated user's profile.
 export const getMe = async (req, res, next) => {
     try {
         const user = await User.findById(req.user.id);

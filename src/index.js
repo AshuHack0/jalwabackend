@@ -4,9 +4,7 @@ import routes from "./routes/index.js";
 import morgan from "morgan";
 import { env } from "./config/env.js";
 import connectDB from "./config/database.js";
-
-// Connect to Database
-connectDB();
+import { startWinGoScheduler } from "./services/winGoScheduler.js";
 
 const app = express();
 
@@ -44,8 +42,11 @@ app.use((err, req, res, next) => {
   });
 });
 
-app.listen(env.PORT, () => {
-  console.log(`🚀 Server is running at http://localhost:${env.PORT}`);
+connectDB().then(() => {
+  app.listen(env.PORT, () => {
+    console.log(`🚀 Server is running at http://localhost:${env.PORT}`);
+    startWinGoScheduler();
+  });
 });
 
 export default app;

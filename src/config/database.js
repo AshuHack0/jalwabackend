@@ -1,10 +1,13 @@
 import mongoose from "mongoose";
 import { env } from "./env.js";
+import seedWinGoGames from "../seed/winGoSeed.js";
 
 const connectDB = async () => {
   try {
     const conn = await mongoose.connect(env.MONGODB_URI);
     console.log(`🍃 MongoDB Connected: ${conn.connection.host}`);
+
+    await seedWinGoGames();
   } catch (error) {
     console.error(`❌ Error connecting to MongoDB: ${error.message}`);
     process.exit(1);

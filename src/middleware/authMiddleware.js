@@ -1,10 +1,7 @@
-import jwt from "jsonwebtoken";
-import { env } from "../config/env.js";
+import { verifyToken } from "../utils/jwt.js";
 import User from "../models/User.js";
 
-/**
- * @desc    Verify JWT token and protect routes
- */
+// Protects routes by validating JWT token and attaching the user.
 export const protect = async (req, res, next) => {
     let token;
 
@@ -23,10 +20,8 @@ export const protect = async (req, res, next) => {
     }
 
     try {
-        // Verify token
-        const decoded = jwt.verify(token, env.JWT_SECRET);
+        const decoded = verifyToken(token);
 
-        // Get user from token
         req.user = await User.findById(decoded.id);
 
         if (!req.user) {
@@ -45,9 +40,7 @@ export const protect = async (req, res, next) => {
     }
 };
 
-/**
- * @desc    Grant access to specific roles
- */
+// Restricts access to users whose role is included in the given roles.
 export const authorize = (...roles) => {
     return (req, res, next) => {
         if (!roles.includes(req.user.role)) {
