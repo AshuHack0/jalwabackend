@@ -43,7 +43,9 @@ const placeBet = async (req, res, next) => {
         }
 
         const now = new Date();
-        if (now < round.startsAt || now > round.endsAt || round.status === "closed") {
+        // Betting closes 15 seconds before round ends (waiting-for-draw period)
+        const bettingDeadline = new Date(round.endsAt.getTime() - 15 * 1000);
+        if (now < round.startsAt || now > bettingDeadline || round.status === "closed" || round.status === "settled") {
             return res.status(400).json({
                 success: false,
                 message: "Betting for this round is closed.",

@@ -43,9 +43,10 @@ export const calculateBetPayout = (bet, winningDigit) => {
 
     const { bigSmall, color } = getOutcomeFromDigit(winningDigit);
 
-    // Big / Small bets
-    if (bet.choiceBigSmall && (bet.choiceBigSmall === "big" || bet.choiceBigSmall === "small")) {
-        if (bet.choiceBigSmall === bigSmall) {
+    // Big / Small bets (normalize case: DB may store "BIG"/"SMALL")
+    const choiceBigSmallNorm = bet.choiceBigSmall && String(bet.choiceBigSmall).toLowerCase();
+    if (choiceBigSmallNorm === "big" || choiceBigSmallNorm === "small") {
+        if (choiceBigSmallNorm === bigSmall) {
             payoutAmount += contractAmount * 2;
             isWin = true;
         }

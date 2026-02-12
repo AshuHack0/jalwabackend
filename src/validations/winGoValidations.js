@@ -9,7 +9,8 @@ import {
 } from "../constants/winGoConstants.js";
 
 const bigSmallValues = Object.values(BIG_SMALL_MAP).map((v) => v.toLowerCase());
-const colorValues = Object.values(COLOR_MAP);
+// Only RED, GREEN, VIOLET are valid bet choices (RED_VIOLET/GREEN_VIOLET are outcome-only colors)
+const colorValues = [COLOR_MAP.RED, COLOR_MAP.GREEN, COLOR_MAP.VIOLET];
 
 export const placeBetSchema = z
     .object({
