@@ -83,14 +83,24 @@ async function tick() {
             const current = getRoundWindow(duration, gameCode, now);
             let currentRound = await WinGoRound.findOne({ game: game._id, period: current.period });
             if (!currentRound) {
-                currentRound = await WinGoRound.create({
-                    game: game._id,
-                    period: current.period,
-                    startsAt: current.startsAt,
-                    endsAt: current.endsAt,
-                    status: "open",
-                });
-            } else if (currentRound.status === "scheduled") {
+                try {
+                    currentRound = await WinGoRound.create({
+                        game: game._id,
+                        period: current.period,
+                        startsAt: current.startsAt,
+                        endsAt: current.endsAt,
+                        status: "open",
+                    });
+                } catch (createErr) {
+                    // Race: another tick/process created this round; fetch and use it
+                    if (createErr.code === 11000) {
+                        currentRound = await WinGoRound.findOne({ game: game._id, period: current.period });
+                    } else {
+                        throw createErr;
+                    }
+                }
+            }
+            if (currentRound && currentRound.status === "scheduled") {
                 // Admin pre-created this round (maybe with a preset outcome) — now open it for betting
                 currentRound.status = "open";
                 await currentRound.save();
