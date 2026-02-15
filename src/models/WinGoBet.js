@@ -55,7 +55,7 @@ const winGoBetSchema = new mongoose.Schema(
     }
 );
 
-winGoBetSchema.index({ user: 1, round: 1 }, { unique: true });
+winGoBetSchema.index({ user: 1, round: 1 });
 
 const WinGoBet = mongoose.model("WinGoBet", winGoBetSchema);
 

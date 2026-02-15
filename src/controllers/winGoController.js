@@ -59,15 +59,6 @@ const placeBet = async (req, res, next) => {
             });
         }
 
-        const existingBet = await WinGoBet.findOne({ user: user._id, round: round._id });
-
-        if (existingBet) {
-            return res.status(400).json({
-                success: false,
-                message: "You have already placed a bet for this round.",
-            });
-        }
-
         user.walletBalance -= amount;
         await user.save();
 
@@ -169,6 +160,7 @@ const getGameByDuration = async (req, res, next) => {
                     currentPage: page,
                     pageSize,
                 },
+                serverTime: new Date().toISOString(),
             },
         });
     } catch (error) {
@@ -176,4 +168,64 @@ const getGameByDuration = async (req, res, next) => {
     }
 };
 
-export { placeBet, getGameByDuration };
+// Get authenticated user's bet history for a specific game duration
+const getMyHistory = async (req, res, next) => {
+    try {
+        const userId = req.user.id;
+
+        // Derive duration from the base path (strip /myHistory suffix)
+        const gamePath = req.path.replace("/myHistory", "");
+        const durationSeconds = DURATION_FROM_PATH[gamePath];
+        if (!durationSeconds) {
+            return res.status(400).json({
+                success: false,
+                message: "Invalid WinGo game route",
+            });
+        }
+
+        const game = await WinGoGame.findOne({ durationSeconds });
+        if (!game) {
+            return res.status(404).json({
+                success: false,
+                message: "WinGo game not found",
+            });
+        }
+
+        const page = Number(req.query.page) > 0 ? Number(req.query.page) : 1;
+        const pageSize = Number(req.query.pageSize) > 0 ? Number(req.query.pageSize) : 10;
+        const skip = (page - 1) * pageSize;
+
+        // Find all rounds for this game
+        const roundIds = await WinGoRound.find({ game: game._id }).distinct("_id");
+
+        const filter = { user: userId, round: { $in: roundIds } };
+        const totalItems = await WinGoBet.countDocuments(filter);
+
+        const bets = await WinGoBet.find(filter)
+            .sort({ createdAt: -1 })
+            .skip(skip)
+            .limit(pageSize)
+            .populate({
+                path: "round",
+                select: "period outcomeNumber outcomeBigSmall outcomeColor status startsAt endsAt",
+            })
+            .lean();
+
+        res.status(200).json({
+            success: true,
+            data: {
+                bets,
+                pagination: {
+                    totalItems,
+                    totalPages: Math.ceil(totalItems / pageSize),
+                    currentPage: page,
+                    pageSize,
+                },
+            },
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export { placeBet, getGameByDuration, getMyHistory };
