@@ -11,6 +11,7 @@ import {
     BIG_SMALL_MAP,
     COLOR_MAP,
 } from "../constants/winGoConstants.js";
+import { getRoundWindow } from "../utils/winGoRoundWindow.js";
 
 // Internal: places a bet for a game identified.
 const placeBet = async (req, res, next) => {
@@ -111,7 +112,7 @@ const getCurrentRound = async (req, res, next) => {
         const now = new Date();
 
         // Current active round (if any) - exclude outcome fields directly in query
-        const currentRound = await WinGoRound.findOne(
+        let currentRound = await WinGoRound.findOne(
             {
                 game: game._id,
                 startsAt: { $lte: now },
@@ -126,6 +127,23 @@ const getCurrentRound = async (req, res, next) => {
         )
             .sort({ startsAt: -1 })
             .lean();
+
+        // Fallback: compute the round window mathematically so the frontend
+        // always gets valid timing data even if the DB round isn't created yet.
+        if (!currentRound) {
+            const { startsAt, endsAt, period } = getRoundWindow(
+                durationSeconds,
+                game.gameCode,
+                Date.now()
+            );
+            currentRound = {
+                _id: null,
+                period,
+                startsAt: startsAt.toISOString(),
+                endsAt: endsAt.toISOString(),
+                status: "open",
+            };
+        }
 
         res.status(200).json({
             success: true,
