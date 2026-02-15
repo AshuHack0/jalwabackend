@@ -22,7 +22,7 @@ export const placeBetSchema = z
             }),
         choice: z.union([z.string(), z.number()]),
         amount: z.coerce.number().positive({ message: "Bet amount must be greater than 0." }),
-        roundId: z.string().optional(),
+        period: z.string().min(1, { message: "Period is required." }),
     })
     .superRefine((data, ctx) => {
         if (data.betType === BET_TYPE_BIG_SMALL) {

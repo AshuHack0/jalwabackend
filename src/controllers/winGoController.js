@@ -32,9 +32,11 @@ const placeBet = async (req, res, next) => {
             });
         }
 
-        const { betType: normalizedBetType, choice, amount, roundId } = req.validated;
+        const { betType: normalizedBetType, choice, amount, period } = req.validated;
 
-        const round = roundId ? await WinGoRound.findById(roundId) : null;
+        const round = period
+            ? await WinGoRound.findOne({ period, status: "open" })
+            : null;
 
         if (!round) {
             return res.status(400).json({
