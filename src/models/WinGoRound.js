@@ -40,9 +40,13 @@ const winGoRoundSchema = new mongoose.Schema(
         },
         status: {
             type: String,
-            enum: ["scheduled", "open", "closed", "settled"],
+            enum: ["scheduled", "open", "processing", "closed", "settled"],
             default: "scheduled",
             index: true,
+        },
+        settledAt: {
+            type: Date,
+            default: null,
         },
     },
     {
