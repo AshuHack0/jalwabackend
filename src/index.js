@@ -47,7 +47,7 @@ app.use((err, req, res, next) => {
 connectDB().then(() => {
   app.listen(env.PORT, () => {
     console.log(`🚀 Server is running at http://localhost:${env.PORT}`);
-    // startWinGoScheduler();
+    startWinGoScheduler();
   });
 });
 
