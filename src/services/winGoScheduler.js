@@ -1,26 +1,26 @@
-import WinGoGame from "../models/WinGoGame.js";
 import WinGoRound from "../models/WinGoRound.js";
 import WinGoBet from "../models/WinGoBet.js";
 import User from "../models/User.js";
 import { getOutcomeFromDigit, calculateBetPayout } from "../utils/winGoRules.js";
-import { BIG_SMALL_MAP } from "../constants/winGoConstants.js";
+import { BIG_SMALL_MAP, WINGO_GAMES, DRAW_DURATION_MS } from "../constants/winGoConstants.js";
 import { getRoundWindow } from "../utils/winGoRoundWindow.js";
 
-const TICK_INTERVAL_MS = 1000; // 1 second is enough in production
+const TICK_INTERVAL_MS = 1000;
+const STALE_ROUND_MS = 30_000; // recover rounds stuck longer than 30 s
 
 /* ============================================================
-   SAFE ROUND SETTLEMENT (ATOMIC LOCK, NO TRANSACTIONS)
+   SETTLE A SINGLE ROUND
+   Handles both "processing" and "closed" states so it can
+   resume after a crash at any point in the pipeline.
 ============================================================ */
-async function settleRoundLocked(roundId) {
+async function settleRound(roundId) {
   try {
     const round = await WinGoRound.findById(roundId);
+    if (!round) return;
+    if (round.status === "settled") return;
+    if (round.status !== "processing" && round.status !== "closed") return;
 
-    // Idempotency guard — only process rounds we locked
-    if (!round || round.status !== "processing") {
-      return;
-    }
-
-    // Determine winning digit
+    // 1. Determine winning digit (idempotent — reuses existing outcome)
     const winningDigit =
       typeof round.outcomeNumber === "number" &&
       round.outcomeNumber >= 0 &&
@@ -30,15 +30,23 @@ async function settleRoundLocked(roundId) {
 
     const { bigSmall, color } = getOutcomeFromDigit(winningDigit);
 
-    round.outcomeNumber = winningDigit;
-    round.outcomeBigSmall =
-      bigSmall === "big" ? BIG_SMALL_MAP.BIG : BIG_SMALL_MAP.SMALL;
-    round.outcomeColor = color;
-    round.status = "closed";
+    // 2. Persist outcome → move to "closed" (skip if already closed)
+    if (round.status === "processing") {
+      await WinGoRound.updateOne(
+        { _id: round._id },
+        {
+          $set: {
+            outcomeNumber: winningDigit,
+            outcomeBigSmall:
+              bigSmall === "big" ? BIG_SMALL_MAP.BIG : BIG_SMALL_MAP.SMALL,
+            outcomeColor: color,
+            status: "closed",
+          },
+        }
+      );
+    }
 
-    await round.save();
-
-    // Evaluate bets
+    // 3. Evaluate every bet on this round (idempotent — $set overwrites)
     const bets = await WinGoBet.find({ round: round._id });
 
     const bulkBetOps = [];
@@ -64,7 +72,7 @@ async function settleRoundLocked(roundId) {
       await WinGoBet.bulkWrite(bulkBetOps);
     }
 
-    // Credit winners in bulk
+    // 4. Credit winners
     if (userIncrementMap.size > 0) {
       const bulkUserOps = [];
 
@@ -80,25 +88,27 @@ async function settleRoundLocked(roundId) {
       await User.bulkWrite(bulkUserOps);
     }
 
-    round.status = "settled";
-    round.settledAt = new Date();
-
-    await round.save();
+    // 5. Finalise
+    await WinGoRound.updateOne(
+      { _id: round._id },
+      { $set: { status: "settled", settledAt: new Date() } }
+    );
   } catch (err) {
-    console.error("WinGo settlement failed:", err);
+    console.error("WinGo settlement failed for round", roundId, err);
   }
 }
 
 /* ============================================================
-   ATOMIC ROUND LOCKING
+   LOCK & SETTLE EXPIRED "open" ROUNDS
+   Atomically moves open → processing, then settles.
 ============================================================ */
-async function lockAndSettleExpiredRounds(gameId, now) {
+async function lockAndSettleExpiredRounds(gameCode, nowMs) {
   while (true) {
     const round = await WinGoRound.findOneAndUpdate(
       {
-        game: gameId,
-        status: { $in: ["open", "scheduled"] },
-        endsAt: { $lte: new Date(now) },
+        gameCode,
+        status: "open",
+        endsAt: { $lte: new Date(nowMs + DRAW_DURATION_MS) },
       },
       { $set: { status: "processing" } },
       { new: true }
@@ -106,38 +116,90 @@ async function lockAndSettleExpiredRounds(gameId, now) {
 
     if (!round) break;
 
-    await settleRoundLocked(round._id);
+    await settleRound(round._id);
   }
 }
 
 /* ============================================================
-   ENSURE CURRENT ROUND EXISTS
+   RECOVER ROUNDS STUCK IN INTERMEDIATE / ABANDONED STATES
+   Runs every tick but queries are cheap (indexed + rare hits).
 ============================================================ */
-async function ensureCurrentRound(game, now) {
+async function recoverStaleRounds(gameCode, nowMs) {
+  const staleThreshold = new Date(nowMs - STALE_ROUND_MS);
+
+  // 1. "processing" rounds stuck too long → retry settlement
+  while (true) {
+    const round = await WinGoRound.findOne({
+      gameCode,
+      status: "processing",
+      updatedAt: { $lte: staleThreshold },
+    });
+    if (!round) break;
+    await settleRound(round._id);
+  }
+
+  // 2. "closed" rounds stuck too long → retry credit + finalise
+  while (true) {
+    const round = await WinGoRound.findOne({
+      gameCode,
+      status: "closed",
+      updatedAt: { $lte: staleThreshold },
+    });
+    if (!round) break;
+    await settleRound(round._id);
+  }
+
+  // 3. Old "scheduled" or "open" rounds whose window ended long ago
+  //    (e.g. server was offline during their window)
+  while (true) {
+    const round = await WinGoRound.findOneAndUpdate(
+      {
+        gameCode,
+        status: { $in: ["scheduled", "open"] },
+        endsAt: { $lte: staleThreshold },
+      },
+      { $set: { status: "processing" } },
+      { new: true }
+    );
+    if (!round) break;
+    await settleRound(round._id);
+  }
+}
+
+/* ============================================================
+   ENSURE CURRENT + NEXT ROUND EXIST
+   • Current window round → "open"
+   • Next window round    → "scheduled"
+============================================================ */
+async function ensureCurrentRound(game, nowMs) {
   const { startsAt, endsAt, period } = getRoundWindow(
     game.durationSeconds,
     game.gameCode,
-    now
+    nowMs
   );
 
   let round = await WinGoRound.findOne({
-    game: game._id,
+    gameCode: game.gameCode,
     period,
   });
 
+  let justActivated = false;
+
   if (!round) {
     try {
+      const status = startsAt.getTime() <= nowMs ? "open" : "scheduled";
       round = await WinGoRound.create({
-        game: game._id,
+        gameCode: game.gameCode,
         period,
         startsAt,
         endsAt,
-        status: "open",
+        status,
       });
+      if (status === "open") justActivated = true;
     } catch (err) {
       if (err.code === 11000) {
         round = await WinGoRound.findOne({
-          game: game._id,
+          gameCode: game.gameCode,
           period,
         });
       } else {
@@ -146,11 +208,35 @@ async function ensureCurrentRound(game, now) {
     }
   }
 
-  if (round.status === "scheduled" && startsAt <= new Date(now)) {
-    await WinGoRound.updateOne(
-      { _id: round._id },
-      { $set: { status: "open" } }
+  // Scheduled round's start time has arrived — activate it (atomic)
+  if (round && round.status === "scheduled" && startsAt.getTime() <= nowMs) {
+    const activated = await WinGoRound.findOneAndUpdate(
+      { _id: round._id, status: "scheduled" },
+      { $set: { status: "open" } },
+      { new: true }
     );
+    if (activated) justActivated = true;
+  }
+
+  // When a round just became active, pre-create the next round as "scheduled"
+  if (justActivated) {
+    const next = getRoundWindow(
+      game.durationSeconds,
+      game.gameCode,
+      endsAt.getTime()
+    );
+
+    try {
+      await WinGoRound.create({
+        gameCode: game.gameCode,
+        period: next.period,
+        startsAt: next.startsAt,
+        endsAt: next.endsAt,
+        status: "scheduled",
+      });
+    } catch (err) {
+      if (err.code !== 11000) throw err;
+    }
   }
 }
 
@@ -158,18 +244,16 @@ async function ensureCurrentRound(game, now) {
    MAIN TICK
 ============================================================ */
 async function tick() {
-  const now = Date.now();
+  const nowMs = Date.now();
 
   try {
-    const games = await WinGoGame.find({ isActive: { $ne: false } }).lean();
-    if (!games.length) return;
-
-    for (const game of games) {
-      if (!game.gameCode || !game.durationSeconds) continue;
-
-      await lockAndSettleExpiredRounds(game._id, now);
-      await ensureCurrentRound(game, now);
-    }
+    await Promise.all(
+      WINGO_GAMES.map(async (game) => {
+        await recoverStaleRounds(game.gameCode, nowMs);
+        await lockAndSettleExpiredRounds(game.gameCode, nowMs);
+        await ensureCurrentRound(game, nowMs);
+      })
+    );
   } catch (err) {
     console.error("WinGo scheduler error:", err);
   }

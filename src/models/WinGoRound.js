@@ -3,9 +3,8 @@ import { COLOR_MAP, BIG_SMALL_MAP } from "../constants/winGoConstants.js";
 
 const winGoRoundSchema = new mongoose.Schema(
     {
-        game: {
-            type: mongoose.Schema.Types.ObjectId,
-            ref: "WinGoGame",
+        gameCode: {
+            type: String,
             required: true,
             index: true,
         },
@@ -53,6 +52,10 @@ const winGoRoundSchema = new mongoose.Schema(
         timestamps: true,
     }
 );
+
+// Compound indexes for scheduler queries
+winGoRoundSchema.index({ gameCode: 1, status: 1, endsAt: 1 });
+winGoRoundSchema.index({ gameCode: 1, status: 1, updatedAt: 1 });
 
 const WinGoRound = mongoose.model("WinGoRound", winGoRoundSchema);
 

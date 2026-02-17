@@ -1,34 +1,27 @@
 import User from "../models/User.js";
-import WinGoGame from "../models/WinGoGame.js";
 import WinGoRound from "../models/WinGoRound.js";
 import WinGoBet from "../models/WinGoBet.js";
 import {
     MIN_DEPOSIT_FOR_PREDICTION,
     DURATION_FROM_PATH,
+    GAME_BY_DURATION,
     BET_TYPE_BIG_SMALL,
     BET_TYPE_NUMBER,
     BET_TYPE_COLOR,
     BIG_SMALL_MAP,
     COLOR_MAP,
+    DRAW_DURATION_MS,
 } from "../constants/winGoConstants.js";
-import { getRoundWindow } from "../utils/winGoRoundWindow.js";
 
 // Internal: places a bet for a game identified.
 const placeBet = async (req, res, next) => {
     try {
-        const user = await User.findById(req.user.id);
+        const user = req.user;
 
-        if (!user) {
-            return res.status(404).json({
-                success: false,
-                message: "User not found",
-            });
-        }
-
-        if ((user.totalDeposited || 0) < MIN_DEPOSIT_FOR_PREDICTION) {
+        if ((user.walletBalance || 0) < MIN_DEPOSIT_FOR_PREDICTION) {
             return res.status(403).json({
                 success: false,
-                message: "You must deposit at least 2000 to activate WinGo predictions.",
+                message: "You must at least 2000 to activate WinGo predictions.",
             });
         }
 
@@ -46,9 +39,8 @@ const placeBet = async (req, res, next) => {
         }
 
         const now = new Date();
-        // Betting closes 15 seconds before round ends (waiting-for-draw period)
-        const bettingDeadline = new Date(round.endsAt.getTime() - 15 * 1000);
-        if (now < round.startsAt || now > bettingDeadline || round.status === "closed" || round.status === "settled") {
+        const bettingDeadline = new Date(round.endsAt.getTime() - DRAW_DURATION_MS);
+        if (now < round.startsAt || now > bettingDeadline || round.status !== "open") {
             return res.status(400).json({
                 success: false,
                 message: "Betting for this round is closed.",
@@ -103,7 +95,7 @@ const getCurrentRound = async (req, res, next) => {
             });
         }
 
-        const game = await WinGoGame.findOne({ durationSeconds });
+        const game = GAME_BY_DURATION[durationSeconds];
         if (!game) {
             return res.status(404).json({
                 success: false,
@@ -112,14 +104,41 @@ const getCurrentRound = async (req, res, next) => {
         }
 
         const now = new Date();
+        const nowMs = now.getTime();
 
-        // Current active round (if any) - exclude outcome fields directly in query
-        let currentRound = await WinGoRound.findOne(
+        // Find the round whose time window includes "now" (any status)
+        const currentRound = await WinGoRound.findOne({
+            gameCode: game.gameCode,
+            startsAt: { $lte: now },
+            endsAt: { $gte: now },
+        })
+            .sort({ startsAt: 1 })
+            .lean();
+
+        if (!currentRound) {
+            return res.status(404).json({
+                success: false,
+                message: "No active round available. Please wait.",
+            });
+        }
+
+        const bettingEndsAt = new Date(currentRound.endsAt.getTime() - DRAW_DURATION_MS);
+        const isBettingOpen = currentRound.status === "open" && nowMs < bettingEndsAt.getTime();
+        const isDrawPhase = !isBettingOpen && nowMs < currentRound.endsAt.getTime();
+
+        // During betting phase, hide outcome so clients can't cheat
+        if (isBettingOpen) {
+            delete currentRound.outcomeNumber;
+            delete currentRound.outcomeBigSmall;
+            delete currentRound.outcomeColor;
+        }
+
+        // Pre-fetch next scheduled round (no outcomes)
+        const nextRound = await WinGoRound.findOne(
             {
-                game: game._id,
-                startsAt: { $lte: now },
-                endsAt: { $gte: now },
-                status: "open",
+                gameCode: game.gameCode,
+                startsAt: { $gte: currentRound.endsAt },
+                status: { $in: ["scheduled", "open"] },
             },
             {
                 outcomeBigSmall: 0,
@@ -127,31 +146,19 @@ const getCurrentRound = async (req, res, next) => {
                 outcomeNumber: 0,
             }
         )
-            .sort({ startsAt: -1 })
+            .sort({ startsAt: 1 })
             .lean();
-
-        // Fallback: compute the round window mathematically so the frontend
-        // always gets valid timing data even if the DB round isn't created yet.
-        if (!currentRound) {
-            const { startsAt, endsAt, period } = getRoundWindow(
-                durationSeconds,
-                game.gameCode,
-                Date.now()
-            );
-            currentRound = {
-                _id: null,
-                period,
-                startsAt: startsAt.toISOString(),
-                endsAt: endsAt.toISOString(),
-                status: "open",
-            };
-        }
 
         res.status(200).json({
             success: true,
             data: {
                 game,
                 currentRound,
+                nextRound,
+                isBettingOpen,
+                isDrawPhase,
+                bettingEndsAt,
+                drawDurationMs: DRAW_DURATION_MS,
                 serverTime: new Date().toISOString(),
             },
         });
@@ -173,7 +180,7 @@ const getGameHistory = async (req, res, next) => {
             });
         }
 
-        const game = await WinGoGame.findOne({ durationSeconds });
+        const game = GAME_BY_DURATION[durationSeconds];
         if (!game) {
             return res.status(404).json({
                 success: false,
@@ -190,7 +197,7 @@ const getGameHistory = async (req, res, next) => {
 
         // History rounds query
         const historyFilter = {
-            game: game._id,
+            gameCode: game.gameCode,
             $or: [
                 { endsAt: { $lt: now } },
                 { status: { $in: ["closed", "settled"] } },
@@ -237,7 +244,7 @@ const getMyHistory = async (req, res, next) => {
             });
         }
 
-        const game = await WinGoGame.findOne({ durationSeconds });
+        const game = GAME_BY_DURATION[durationSeconds];
         if (!game) {
             return res.status(404).json({
                 success: false,
@@ -250,7 +257,7 @@ const getMyHistory = async (req, res, next) => {
         const skip = (page - 1) * pageSize;
 
         // Find all rounds for this game
-        const roundIds = await WinGoRound.find({ game: game._id }).distinct("_id");
+        const roundIds = await WinGoRound.find({ gameCode: game.gameCode }).distinct("_id");
 
         const filter = { user: userId, round: { $in: roundIds } };
         const totalItems = await WinGoBet.countDocuments(filter);

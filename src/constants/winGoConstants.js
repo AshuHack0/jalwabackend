@@ -28,10 +28,10 @@ export const DURATION_FROM_PATH = {
 };
 
 export const WINGO_GAMES = [
-  { name: "WinGo 30 sec", durationSeconds: 30, gameCode: "10005" },
-  { name: "WinGo 1 min", durationSeconds: 60, gameCode: "10001" },
-  { name: "WinGo 3 min", durationSeconds: 180, gameCode: "10003" },
-  { name: "WinGo 5 min", durationSeconds: 300, gameCode: "10004" },
+  { name: "WinGo 30 sec", durationSeconds: DURATION_FROM_PATH["/WinGo_30S"], gameCode: "10005" },
+  { name: "WinGo 1 min", durationSeconds: DURATION_FROM_PATH["/WinGo_1Min"], gameCode: "10001" },
+  { name: "WinGo 3 min", durationSeconds: DURATION_FROM_PATH["/WinGo_3Min"], gameCode: "10003" },
+  { name: "WinGo 5 min", durationSeconds: DURATION_FROM_PATH["/WinGo_5Min"], gameCode: "10004" },
 ];
 export const WINGO_NUMBER_COLOR_MAP = [
     { number: 0, color: COLOR_MAP.RED_VIOLET },
@@ -47,3 +47,11 @@ export const WINGO_NUMBER_COLOR_MAP = [
 ];
 
 export const WINGO_MULTIPLIERS = [ 1, 5, 10, 20, 50, 100 ];
+
+// 5-second draw window: betting closes → result revealed → next round starts
+export const DRAW_DURATION_MS = 5000;
+
+// Quick lookup: durationSeconds → game config
+export const GAME_BY_DURATION = Object.fromEntries(
+    WINGO_GAMES.map((g) => [g.durationSeconds, g])
+);
