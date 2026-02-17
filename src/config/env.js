@@ -8,5 +8,9 @@ export const env = {
   JWT_SECRET: process.env.JWT_SECRET || "your_super_secret_jwt_key_jalwa_2024",
   JWT_EXPIRES_IN: process.env.JWT_EXPIRES_IN || "7d",
   INVITE_CODE: process.env.INVITE_CODE || "123456",
+  /** Set to "true" to clear specified collections before starting (dev only) */
+  CLEAR_DB_ON_START: process.env.CLEAR_DB_ON_START === "true",
+  /** Comma-separated collection names, e.g. "WinGoRound,WinGoBet" or "WinGoRound" */
+  CLEAR_DB_COLLECTIONS: process.env.CLEAR_DB_COLLECTIONS || "WinGoRound,WinGoBet",
 };
 
