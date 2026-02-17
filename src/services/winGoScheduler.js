@@ -1,13 +1,14 @@
 import WinGoRound from "../models/WinGoRound.js";
 import WinGoBet from "../models/WinGoBet.js";
-
 import User from "../models/User.js";
+import { logErrorToDbAsync } from "../utils/logErrorToDb.js";
 import { getOutcomeFromDigit, calculateBetPayout } from "../utils/winGoRules.js";
 import { BIG_SMALL_MAP, WINGO_GAMES, DRAW_DURATION_MS } from "../constants/winGoConstants.js";
 import { getRoundWindow } from "../utils/winGoRoundWindow.js";
 
 const TICK_INTERVAL_MS = 1000;
 const STALE_ROUND_MS = 30_000; // recover rounds stuck longer than 30 s
+let tickInProgress = false;
 
 /* ============================================================
    SETTLE A SINGLE ROUND
@@ -54,18 +55,32 @@ async function settleRound(roundId) {
     const userIncrementMap = new Map();
 
     for (const bet of bets) {
-      const { isWin, payoutAmount } = calculateBetPayout(bet, winningDigit);
+      try {
+        const { isWin, payoutAmount } = calculateBetPayout(bet, winningDigit);
 
-      bulkBetOps.push({
-        updateOne: {
-          filter: { _id: bet._id },
-          update: { $set: { isWin, payoutAmount } },
-        },
-      });
+        bulkBetOps.push({
+          updateOne: {
+            filter: { _id: bet._id },
+            update: { $set: { isWin, payoutAmount } },
+          },
+        });
 
-      if (isWin && payoutAmount > 0) {
-        const current = userIncrementMap.get(bet.user.toString()) || 0;
-        userIncrementMap.set(bet.user.toString(), current + payoutAmount);
+        if (isWin && payoutAmount > 0) {
+          const current = userIncrementMap.get(bet.user.toString()) || 0;
+          userIncrementMap.set(bet.user.toString(), current + payoutAmount);
+        }
+      } catch (betErr) {
+        console.error("WinGo settlement skipping invalid bet", bet._id, betErr.message);
+        logErrorToDbAsync(betErr, {
+          source: "winGoScheduler",
+          context: { betId: bet._id?.toString(), roundId: round._id?.toString(), action: "calculateBetPayout" },
+        });
+        bulkBetOps.push({
+          updateOne: {
+            filter: { _id: bet._id },
+            update: { $set: { isWin: false, payoutAmount: 0 } },
+          },
+        });
       }
     }
 
@@ -96,6 +111,10 @@ async function settleRound(roundId) {
     );
   } catch (err) {
     console.error("WinGo settlement failed for round", roundId, err);
+    logErrorToDbAsync(err, {
+      source: "winGoScheduler",
+      context: { roundId: roundId?.toString(), action: "settleRound" },
+    });
   }
 }
 
@@ -243,20 +262,34 @@ async function ensureCurrentRound(game, nowMs) {
 
 /* ============================================================
    MAIN TICK
+   - ensureCurrentRound FIRST so next round opens even if settlement fails
+   - Per-game try-catch so one game's failure doesn't block others
+   - Mutex prevents overlapping ticks (prod race conditions)
 ============================================================ */
 async function tick() {
+  if (tickInProgress) return;
+  tickInProgress = true;
   const nowMs = Date.now();
 
   try {
     await Promise.all(
       WINGO_GAMES.map(async (game) => {
-        await recoverStaleRounds(game.gameCode, nowMs);
-        await lockAndSettleExpiredRounds(game.gameCode, nowMs);
-        await ensureCurrentRound(game, nowMs);
+        try {
+          await recoverStaleRounds(game.gameCode, nowMs);
+          // Activate next round BEFORE settlement — time-based, not settlement-dependent
+          await ensureCurrentRound(game, nowMs);
+          await lockAndSettleExpiredRounds(game.gameCode, nowMs);
+        } catch (err) {
+          console.error(`WinGo scheduler error for game ${game.gameCode}:`, err);
+          logErrorToDbAsync(err, {
+            source: "winGoScheduler",
+            context: { gameCode: game.gameCode, action: "tick" },
+          });
+        }
       })
     );
-  } catch (err) {
-    console.error("WinGo scheduler error:", err);
+  } finally {
+    tickInProgress = false;
   }
 }
 

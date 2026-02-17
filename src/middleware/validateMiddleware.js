@@ -1,3 +1,5 @@
+import { logErrorToDbAsync } from "../utils/logErrorToDb.js";
+
 // Express middleware: validates req.body against Zod schema; on success sets req.validated, on failure returns 400.
 export const validate = (schema) => (req, res, next) => {
     try {
@@ -22,7 +24,7 @@ export const validate = (schema) => (req, res, next) => {
             errors: flattened.fieldErrors,
         });
     } catch (err) {
-        // If something goes wrong during validation itself, delegate to global error handler
+        logErrorToDbAsync(err, { source: "validate", context: { schema: schema?.description ?? "unknown" }, req });
         return next(err);
     }
 };

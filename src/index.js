@@ -5,6 +5,7 @@ import morgan from "morgan";
 import { env } from "./config/env.js";
 import connectDB from "./config/database.js";
 import { startWinGoScheduler } from "./services/winGoScheduler.js";
+import { logErrorToDbAsync } from "./utils/logErrorToDb.js";
 
 const app = express();
 
@@ -36,6 +37,7 @@ app.use((req, res) => {
 // Error Handler
 app.use((err, req, res, next) => {
   console.error(err.stack);
+  logErrorToDbAsync(err, { source: "express", context: { statusCode: 500 }, req });
   res.status(500).json({
     success: false,
     message: err.message || "Internal server error",

@@ -1,5 +1,6 @@
 import { verifyToken } from "../utils/jwt.js";
 import User from "../models/User.js";
+import { logErrorToDbAsync } from "../utils/logErrorToDb.js";
 
 // Protects routes by validating JWT token and attaching the user.
 export const protect = async (req, res, next) => {
@@ -33,6 +34,7 @@ export const protect = async (req, res, next) => {
 
         next();
     } catch (error) {
+        logErrorToDbAsync(error, { source: "auth", context: { action: "protect" }, req });
         return res.status(401).json({
             success: false,
             message: "Not authorized to access this route",
