@@ -1,4 +1,3 @@
-import User from "../models/User.js";
 import WinGoRound from "../models/WinGoRound.js";
 import WinGoBet from "../models/WinGoBet.js";
 import {
