@@ -131,7 +131,7 @@ async function lockAndSettleExpiredRounds(gameCode, nowMs) {
         endsAt: { $lte: new Date(nowMs + DRAW_DURATION_MS) },
       },
       { $set: { status: "processing" } },
-      { new: true }
+      { returnDocument: "after" }
     );
 
     if (!round) break;
@@ -179,7 +179,7 @@ async function recoverStaleRounds(gameCode, nowMs) {
         endsAt: { $lte: staleThreshold },
       },
       { $set: { status: "processing" } },
-      { new: true }
+      { returnDocument: "after" }
     );
     if (!round) break;
     await settleRound(round._id);
@@ -233,7 +233,7 @@ async function ensureCurrentRound(game, nowMs) {
     const activated = await WinGoRound.findOneAndUpdate(
       { _id: round._id, status: "scheduled" },
       { $set: { status: "open" } },
-      { new: true }
+      { returnDocument: "after" }
     );
     if (activated) justActivated = true;
   }
