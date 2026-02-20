@@ -42,6 +42,31 @@ export const protect = async (req, res, next) => {
     }
 };
 
+// Optionally attaches user if valid token present. Does not fail if no/invalid token.
+export const optionalProtect = async (req, res, next) => {
+  let token;
+
+  if (
+    req.headers.authorization &&
+    req.headers.authorization.startsWith("Bearer")
+  ) {
+    token = req.headers.authorization.split(" ")[1];
+  }
+
+  if (!token) {
+    req.user = null;
+    return next();
+  }
+
+  try {
+    const decoded = verifyToken(token);
+    req.user = await User.findById(decoded.id);
+  } catch {
+    req.user = null;
+  }
+  next();
+};
+
 // Restricts access to users whose role is included in the given roles.
 export const authorize = (...roles) => {
     return (req, res, next) => {

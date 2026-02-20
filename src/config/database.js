@@ -1,6 +1,7 @@
 import mongoose from "mongoose";
 import { env } from "./env.js";
 import WinGoBet from "../models/WinGoBet.js";
+import FirstDepositBonusClaim from "../models/FirstDepositBonusClaim.js";
 import { clearCollections } from "../utils/clearDb.js";
 
 const connectDB = async () => {
@@ -12,8 +13,8 @@ const connectDB = async () => {
       await clearCollections(env.CLEAR_DB_COLLECTIONS);
     }
 
-    // Sync indexes — drops removed unique constraint on wingobets (user+round)
     await WinGoBet.syncIndexes();
+    await FirstDepositBonusClaim.syncIndexes();
   } catch (error) {
     console.error(`❌ Error connecting to MongoDB: ${error.message}`);
     process.exit(1);
