@@ -32,6 +32,13 @@ export const protect = async (req, res, next) => {
             });
         }
 
+        if (req.user.isBanned) {
+            return res.status(403).json({
+                success: false,
+                message: "Your account has been banned. Please contact support.",
+            });
+        }
+
         next();
     } catch (error) {
         logErrorToDbAsync(error, { source: "auth", context: { action: "protect" }, req });

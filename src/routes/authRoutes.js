@@ -4,6 +4,7 @@ import {
     login,
     getMe,
     getWalletBalance,
+    changePassword,
 } from "../controllers/authController.js";
 import { protect } from "../middleware/authMiddleware.js";
 import { validate } from "../middleware/validateMiddleware.js";
@@ -22,5 +23,8 @@ router.get("/me", protect, getMe);
 
 // Returns authenticated user's wallet balance only.
 router.get("/wallet", protect, getWalletBalance);
+
+// Changes authenticated user's password.
+router.patch("/password", protect, changePassword);
 
 export default router;

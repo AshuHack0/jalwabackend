@@ -104,6 +104,13 @@ export const login = async (req, res, next) => {
             });
         }
 
+        if (user.isBanned) {
+            return res.status(403).json({
+                success: false,
+                message: "Your account has been banned. Please contact support.",
+            });
+        }
+
         user.lastLogin = Date.now();
         await user.save();
 
@@ -131,6 +138,25 @@ export const getWalletBalance = async (req, res, next) => {
             success: true,
             data: { balance: user?.walletBalance ?? 0 },
         });
+    } catch (error) {
+        next(error);
+    }
+};
+
+// Changes the authenticated admin's password.
+export const changePassword = async (req, res, next) => {
+    try {
+        const { newPassword } = req.body;
+
+        if (!newPassword) {
+            return res.status(400).json({ success: false, message: "newPassword is required" });
+        }
+
+        const user = await User.findById(req.user.id);
+        user.password = newPassword;
+        await user.save();
+
+        res.status(200).json({ success: true, message: "Password updated successfully" });
     } catch (error) {
         next(error);
     }

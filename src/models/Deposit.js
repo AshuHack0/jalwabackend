@@ -23,6 +23,11 @@ const depositSchema = new mongoose.Schema(
       trim: true,
       default: null,
     },
+    orderId: {
+      type: String,
+      trim: true,
+      default: null,
+    },
   },
   {
     timestamps: true,
