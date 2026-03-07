@@ -288,4 +288,118 @@ const getMyHistory = async (req, res, next) => {
     }
 };
 
-export { placeBet, getCurrentRound, getGameHistory, getMyHistory };
+// Admin: get the current prediction (outcomeNumber) set on the next upcoming round
+const getAdminPrediction = async (req, res, next) => {
+    try {
+        const gamePath = req.path.replace("/prediction", "");
+        const durationSeconds = DURATION_FROM_PATH[gamePath];
+        if (!durationSeconds) {
+            return res.status(400).json({ success: false, message: "Invalid WinGo game route" });
+        }
+        const game = GAME_BY_DURATION[durationSeconds];
+        if (!game) {
+            return res.status(404).json({ success: false, message: "WinGo game not found" });
+        }
+
+        const now = new Date();
+        const nextRound = await WinGoRound.findOne({
+            gameCode: game.gameCode,
+            status: { $in: ["scheduled", "open"] },
+            startsAt: { $gt: now },
+        })
+            .sort({ startsAt: 1 })
+            .lean();
+
+        if (!nextRound) {
+            return res.status(404).json({ success: false, message: "No upcoming round found" });
+        }
+
+        return res.json({
+            success: true,
+            data: { period: nextRound.period, outcomeNumber: nextRound.outcomeNumber },
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+// Admin: set the prediction (outcomeNumber) on the next upcoming round
+const setAdminPrediction = async (req, res, next) => {
+    try {
+        const gamePath = req.path.replace("/prediction", "");
+        const durationSeconds = DURATION_FROM_PATH[gamePath];
+        if (!durationSeconds) {
+            return res.status(400).json({ success: false, message: "Invalid WinGo game route" });
+        }
+        const game = GAME_BY_DURATION[durationSeconds];
+        if (!game) {
+            return res.status(404).json({ success: false, message: "WinGo game not found" });
+        }
+
+        const { number } = req.body;
+        if (!Number.isInteger(number) || number < 0 || number > 9) {
+            return res.status(400).json({ success: false, message: "number must be an integer between 0 and 9" });
+        }
+
+        const now = new Date();
+        const nextRound = await WinGoRound.findOneAndUpdate(
+            {
+                gameCode: game.gameCode,
+                status: { $in: ["scheduled", "open"] },
+                startsAt: { $gt: now },
+            },
+            { $set: { outcomeNumber: number } },
+            { returnDocument: "after", sort: { startsAt: 1 } }
+        );
+
+        if (!nextRound) {
+            return res.status(404).json({ success: false, message: "No upcoming round found to set prediction on" });
+        }
+
+        return res.json({
+            success: true,
+            data: { period: nextRound.period, outcomeNumber: nextRound.outcomeNumber },
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+// Admin: unset the prediction on the next upcoming round (revert to random)
+const unsetAdminPrediction = async (req, res, next) => {
+    try {
+        const gamePath = req.path.replace("/prediction", "");
+        const durationSeconds = DURATION_FROM_PATH[gamePath];
+        if (!durationSeconds) {
+            return res.status(400).json({ success: false, message: "Invalid WinGo game route" });
+        }
+        const game = GAME_BY_DURATION[durationSeconds];
+        if (!game) {
+            return res.status(404).json({ success: false, message: "WinGo game not found" });
+        }
+
+        const now = new Date();
+        const nextRound = await WinGoRound.findOneAndUpdate(
+            {
+                gameCode: game.gameCode,
+                status: { $in: ["scheduled", "open"] },
+                startsAt: { $gt: now },
+            },
+            { $set: { outcomeNumber: null } },
+            { returnDocument: "after", sort: { startsAt: 1 } }
+        );
+
+        if (!nextRound) {
+            return res.status(404).json({ success: false, message: "No upcoming round found" });
+        }
+
+        return res.json({
+            success: true,
+            data: { period: nextRound.period, outcomeNumber: null },
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export { placeBet, getCurrentRound, getGameHistory, getMyHistory, getAdminPrediction, setAdminPrediction, unsetAdminPrediction };
