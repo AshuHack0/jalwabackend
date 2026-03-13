@@ -1,3 +1,117 @@
+/**
+ * WinGo Round Scheduler (production-safe)
+ * =====================================
+ *
+ * This service is responsible for creating WinGo rounds on time, closing/settling
+ * rounds after their end time, evaluating all bets, crediting winners, and
+ * recovering from crashes or partial progress.
+ *
+ * -------------------------
+ * Core data model concepts
+ * -------------------------
+ * A "round" (`WinGoRound`) belongs to a game (`gameCode`) and is uniquely identified
+ * by a deterministic `period` string derived from:
+ * - UTC date (YYYYMMDD)
+ * - `gameCode`
+ * - daily sequence number for that duration window
+ *
+ * Round time windows are computed by `getRoundWindow(durationSeconds, gameCode, now)`
+ * and are aligned to UTC midnight boundaries (same schedule for all servers).
+ *
+ * -------------------------
+ * Round lifecycle / states
+ * -------------------------
+ * This scheduler uses the following round `status` values:
+ *
+ * - "scheduled"
+ *   - Round exists for the next window but has not started yet.
+ *   - Created ahead of time so clients can show next period.
+ *
+ * - "open"
+ *   - Current active round where bets are accepted.
+ *
+ * - "processing"
+ *   - Round has reached (or is about to reach) its end time and is being locked
+ *     for settlement. This prevents multiple workers from settling the same "open"
+ *     round concurrently.
+ *
+ * - "closed"
+ *   - Outcome has been persisted to the round (outcomeNumber / outcomeBigSmall /
+ *     outcomeColor). Bets can be evaluated deterministically from this point.
+ *
+ * - "settled"
+ *   - Bets have been evaluated, winners credited, and the round is finalized.
+ *
+ * -------------------------
+ * Outcome (BIG/SMALL, color)
+ * -------------------------
+ * The *only* source of BIG/SMALL is the winning digit (0-9):
+ * - If `outcomeNumber` already exists on the round (0-9), we reuse it (idempotent).
+ * - Otherwise we generate a digit using `Math.floor(Math.random() * 10)`.
+ *
+ * Then we derive:
+ * - BIG/SMALL: digit >= 5 => "big", else "small" (see `getOutcomeFromDigit`)
+ * - Stored as: "BIG" / "SMALL" via `BIG_SMALL_MAP`
+ * - Color is also derived from the digit (see `getOutcomeFromDigit`)
+ *
+ * -------------------------
+ * Draw window (anti-race)
+ * -------------------------
+ * `DRAW_DURATION_MS` defines a short window around the round end where we treat
+ * an "open" round as eligible to be locked. In practice, this allows the backend
+ * to lock the round slightly before/around its exact end, so settlement is smooth
+ * and does not depend on perfect timer precision.
+ *
+ * ------------------------------------------
+ * Settlement pipeline (idempotent by design)
+ * ------------------------------------------
+ * `settleRound(roundId)` handles both "processing" and "closed" rounds so it can
+ * resume after a crash at any point:
+ *
+ * 1) Fetch round and ensure it is in a settle-able state.
+ * 2) Determine winning digit:
+ *    - reuse `round.outcomeNumber` if already set
+ *    - otherwise generate and persist it
+ * 3) Persist outcome and move status "processing" -> "closed"
+ * 4) Fetch all bets for the round and compute each bet result using
+ *    `calculateBetPayout(bet, winningDigit)`:
+ *    - writes bet fields via `$set` (safe to run repeatedly)
+ *    - aggregates winner credits per user in-memory
+ * 5) Credit winners using bulk `$inc` on `User.walletBalance`
+ * 6) Finalize by setting status -> "settled" and `settledAt`
+ *
+ * Notes:
+ * - Bet evaluation writes are idempotent because they overwrite (`$set`) the same fields.
+ * - If a bet payload is invalid, it is marked as losing with payout 0 and logged.
+ *
+ * -------------------------
+ * Stale recovery (crash safe)
+ * -------------------------
+ * If the server crashes mid-round, rounds can be left in intermediate states.
+ * `recoverStaleRounds()` re-drives settlement for rounds that have been stuck
+ * longer than `STALE_ROUND_MS`:
+ * - stuck "processing" -> retry settlement
+ * - stuck "closed"     -> retry settlement (credits + finalize)
+ * - very old "scheduled"/"open" whose window ended -> force to "processing" then settle
+ *
+ * -------------------------
+ * Scheduler tick loop
+ * -------------------------
+ * The scheduler runs every `TICK_INTERVAL_MS` with a simple in-process mutex
+ * (`tickInProgress`) to prevent overlapping ticks.
+ *
+ * For each configured game in `WINGO_GAMES`, per tick:
+ * 1) Recover stale rounds (cheap, indexed queries; rare hits)
+ * 2) Ensure current round exists and becomes "open" when its start time arrives
+ *    - if a round just became active, pre-create the next one as "scheduled"
+ * 3) Lock & settle expired "open" rounds:
+ *    - atomically move "open" -> "processing"
+ *    - run `settleRound()` to close + credit + finalize
+ *
+ * Each game is isolated with its own try/catch, so failure in one game does not
+ * block the others. Errors are logged and also persisted via `logErrorToDbAsync()`.
+ */
+
 import WinGoRound from "../models/WinGoRound.js";
 import WinGoBet from "../models/WinGoBet.js";
 import User from "../models/User.js";
