@@ -120,9 +120,61 @@ import { getOutcomeFromDigit, calculateBetPayout } from "../utils/winGoRules.js"
 import { BIG_SMALL_MAP, WINGO_GAMES, DRAW_DURATION_MS } from "../constants/winGoConstants.js";
 import { getRoundWindow } from "../utils/winGoRoundWindow.js";
 
-const TICK_INTERVAL_MS = 1000;
+const TICK_INTERVAL_MS = 500;
 const STALE_ROUND_MS = 30_000; // recover rounds stuck longer than 30 s
 let tickInProgress = false;
+
+/* ============================================================
+   SMART OUTCOME: max-2-consecutive-loss rule
+   Checks last 2 settled rounds; if prediction was wrong both
+   times, force the next outcome to match the prediction (win).
+============================================================ */
+async function smartOutcomeDigit(round) {
+  // Admin override always wins
+  if (round.outcomeSetByAdmin &&
+      typeof round.outcomeNumber === "number" &&
+      round.outcomeNumber >= 0 &&
+      round.outcomeNumber <= 9) {
+    return round.outcomeNumber;
+  }
+
+  const prediction = round.predictedBigSmall; // "BIG" | "SMALL" | null
+
+  // Check last 2 settled rounds for consecutive wrong predictions
+  const recent = await WinGoRound.find({
+    gameCode: round.gameCode,
+    status: "settled",
+    predictedBigSmall: { $ne: null },
+    _id: { $ne: round._id },
+  })
+    .sort({ endsAt: -1 })
+    .limit(2)
+    .lean();
+
+  let consecutiveLosses = 0;
+  for (const r of recent) {
+    if (r.predictedBigSmall && r.outcomeBigSmall &&
+        r.predictedBigSmall !== r.outcomeBigSmall) {
+      consecutiveLosses++;
+    } else {
+      break;
+    }
+  }
+
+  let targetBigSmall;
+  if (prediction) {
+    const forceWin = consecutiveLosses >= 2;
+    const shouldWin = forceWin || Math.random() < 0.5;
+    targetBigSmall = shouldWin ? prediction : (prediction === BIG_SMALL_MAP.BIG ? BIG_SMALL_MAP.SMALL : BIG_SMALL_MAP.BIG);
+  } else {
+    targetBigSmall = Math.random() < 0.5 ? BIG_SMALL_MAP.BIG : BIG_SMALL_MAP.SMALL;
+  }
+
+  const bigNumbers  = [5, 6, 7, 8, 9];
+  const smallNumbers = [0, 1, 2, 3, 4];
+  const pool = targetBigSmall === BIG_SMALL_MAP.BIG ? bigNumbers : smallNumbers;
+  return pool[Math.floor(Math.random() * pool.length)];
+}
 
 /* ============================================================
    SETTLE A SINGLE ROUND
@@ -136,13 +188,13 @@ async function settleRound(roundId) {
     if (round.status === "settled") return;
     if (round.status !== "processing" && round.status !== "closed") return;
 
-    // 1. Determine winning digit (idempotent — reuses existing outcome)
-    const winningDigit =
+    // 1. Determine winning digit using smart logic (idempotent — reuses existing closed outcome)
+    const winningDigit = round.status === "closed" &&
       typeof round.outcomeNumber === "number" &&
       round.outcomeNumber >= 0 &&
       round.outcomeNumber <= 9
         ? round.outcomeNumber
-        : Math.floor(Math.random() * 10);
+        : await smartOutcomeDigit(round);
 
     const { bigSmall, color } = getOutcomeFromDigit(winningDigit);
 
@@ -233,6 +285,50 @@ async function settleRound(roundId) {
 }
 
 /* ============================================================
+   SET NEXT ROUND PREDICTION
+   Called immediately after a round settles. Tallies BIG vs SMALL
+   bet amounts from the just-settled round and sets predictedBigSmall
+   on the next "scheduled" round (only if not already set).
+   Predicts the side with MORE total bet amount — users tend to
+   repeat the majority side, so this keeps the house edge aligned.
+============================================================ */
+async function setNextRoundPrediction(gameCode, settledRoundId) {
+  try {
+    const bets = await WinGoBet.find(
+      { round: settledRoundId },
+      { choiceBigSmall: 1, amount: 1 }
+    ).lean();
+
+    let bigTotal = 0;
+    let smallTotal = 0;
+
+    for (const bet of bets) {
+      if (bet.choiceBigSmall === BIG_SMALL_MAP.BIG) bigTotal += bet.amount;
+      else if (bet.choiceBigSmall === BIG_SMALL_MAP.SMALL) smallTotal += bet.amount;
+    }
+
+    // Default to random if no big/small bets were placed
+    const prediction =
+      bigTotal === 0 && smallTotal === 0
+        ? Math.random() < 0.5 ? BIG_SMALL_MAP.BIG : BIG_SMALL_MAP.SMALL
+        : bigTotal >= smallTotal ? BIG_SMALL_MAP.BIG : BIG_SMALL_MAP.SMALL;
+
+    // Find the next scheduled round and stamp the prediction (atomic — only if still null)
+    await WinGoRound.findOneAndUpdate(
+      { gameCode, status: "scheduled", predictedBigSmall: null },
+      { $set: { predictedBigSmall: prediction } },
+      { sort: { startsAt: 1 } }
+    );
+  } catch (err) {
+    console.error("WinGo setNextRoundPrediction failed", gameCode, err);
+    logErrorToDbAsync(err, {
+      source: "winGoScheduler",
+      context: { gameCode, settledRoundId: settledRoundId?.toString(), action: "setNextRoundPrediction" },
+    });
+  }
+}
+
+/* ============================================================
    LOCK & SETTLE EXPIRED "open" ROUNDS
    Atomically moves open → processing, then settles.
 ============================================================ */
@@ -251,6 +347,7 @@ async function lockAndSettleExpiredRounds(gameCode, nowMs) {
     if (!round) break;
 
     await settleRound(round._id);
+    await setNextRoundPrediction(gameCode, round._id);
   }
 }
 
@@ -322,12 +419,16 @@ async function ensureCurrentRound(game, nowMs) {
   if (!round) {
     try {
       const status = startsAt.getTime() <= nowMs ? "open" : "scheduled";
+      const autoPrediction = status === "open"
+        ? (Math.random() < 0.5 ? BIG_SMALL_MAP.BIG : BIG_SMALL_MAP.SMALL)
+        : null;
       round = await WinGoRound.create({
         gameCode: game.gameCode,
         period,
         startsAt,
         endsAt,
         status,
+        predictedBigSmall: autoPrediction,
       });
       if (status === "open") justActivated = true;
     } catch (err) {
@@ -344,9 +445,10 @@ async function ensureCurrentRound(game, nowMs) {
 
   // Scheduled round's start time has arrived — activate it (atomic)
   if (round && round.status === "scheduled" && startsAt.getTime() <= nowMs) {
+    const autoPrediction = Math.random() < 0.5 ? BIG_SMALL_MAP.BIG : BIG_SMALL_MAP.SMALL;
     const activated = await WinGoRound.findOneAndUpdate(
-      { _id: round._id, status: "scheduled" },
-      { $set: { status: "open" } },
+      { _id: round._id, status: "scheduled", predictedBigSmall: null },
+      { $set: { status: "open", predictedBigSmall: autoPrediction } },
       { returnDocument: "after" }
     );
     if (activated) justActivated = true;

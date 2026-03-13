@@ -26,7 +26,7 @@ router.get("/WinGo_1Min/myHistory", protect, getMyHistory);
 router.get("/WinGo_3Min/myHistory", protect, getMyHistory);
 router.get("/WinGo_5Min/myHistory", protect, getMyHistory);
 
-// Admin-only: get/set/unset the forced outcome for the next upcoming round
+// Admin-only: get/set/unset the forced outcome number for current round
 router.get("/WinGo_30S/prediction", protect, authorize("admin"), getAdminPrediction);
 router.patch("/WinGo_30S/prediction", protect, authorize("admin"), setAdminPrediction);
 router.delete("/WinGo_30S/prediction", protect, authorize("admin"), unsetAdminPrediction);
@@ -42,5 +42,6 @@ router.delete("/WinGo_3Min/prediction", protect, authorize("admin"), unsetAdminP
 router.get("/WinGo_5Min/prediction", protect, authorize("admin"), getAdminPrediction);
 router.patch("/WinGo_5Min/prediction", protect, authorize("admin"), setAdminPrediction);
 router.delete("/WinGo_5Min/prediction", protect, authorize("admin"), unsetAdminPrediction);
+
 
 export default router;

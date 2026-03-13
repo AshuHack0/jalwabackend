@@ -288,7 +288,7 @@ const getMyHistory = async (req, res, next) => {
     }
 };
 
-// Admin: get the current prediction (outcomeNumber) set on the next upcoming round
+// Admin: get the current prediction (outcomeNumber) set on the current open round
 const getAdminPrediction = async (req, res, next) => {
     try {
         const gamePath = req.path.replace("/prediction", "");
@@ -302,28 +302,26 @@ const getAdminPrediction = async (req, res, next) => {
         }
 
         const now = new Date();
-        const nextRound = await WinGoRound.findOne({
+        const currentRound = await WinGoRound.findOne({
             gameCode: game.gameCode,
-            status: { $in: ["scheduled", "open"] },
-            startsAt: { $gt: now },
-        })
-            .sort({ startsAt: 1 })
-            .lean();
+            status: "open",
+            endsAt: { $gt: now },
+        }).lean();
 
-        if (!nextRound) {
-            return res.status(404).json({ success: false, message: "No upcoming round found" });
+        if (!currentRound) {
+            return res.status(404).json({ success: false, message: "No active round found" });
         }
 
         return res.json({
             success: true,
-            data: { period: nextRound.period, outcomeNumber: nextRound.outcomeNumber },
+            data: { period: currentRound.period, outcomeNumber: currentRound.outcomeNumber, outcomeSetByAdmin: currentRound.outcomeSetByAdmin },
         });
     } catch (error) {
         next(error);
     }
 };
 
-// Admin: set the prediction (outcomeNumber) on the next upcoming round
+// Admin: set the prediction (outcomeNumber) on the current open round (must be before last 5 seconds)
 const setAdminPrediction = async (req, res, next) => {
     try {
         const gamePath = req.path.replace("/prediction", "");
@@ -342,30 +340,73 @@ const setAdminPrediction = async (req, res, next) => {
         }
 
         const now = new Date();
-        const nextRound = await WinGoRound.findOneAndUpdate(
-            {
-                gameCode: game.gameCode,
-                status: { $in: ["scheduled", "open"] },
-                startsAt: { $gt: now },
-            },
-            { $set: { outcomeNumber: number } },
-            { returnDocument: "after", sort: { startsAt: 1 } }
-        );
+        const currentRound = await WinGoRound.findOne({
+            gameCode: game.gameCode,
+            status: "open",
+            endsAt: { $gt: now },
+        });
 
-        if (!nextRound) {
-            return res.status(404).json({ success: false, message: "No upcoming round found to set prediction on" });
+        if (!currentRound) {
+            return res.status(404).json({ success: false, message: "No active round found to set prediction on" });
         }
+
+        if (currentRound.outcomeNumber !== null && currentRound.outcomeNumber !== undefined) {
+            return res.status(400).json({ success: false, message: "Prediction already set for this round. Unset it first before setting a new one." });
+        }
+
+        const bettingDeadline = new Date(currentRound.endsAt.getTime() - DRAW_DURATION_MS);
+        if (now >= bettingDeadline) {
+            return res.status(400).json({ success: false, message: "Cannot set prediction in the last 5 seconds of the round" });
+        }
+
+        // Check if the last 2 rounds already had consecutive wrong predictions
+        // If so, the admin's number must NOT produce a 3rd wrong prediction
+        if (currentRound.predictedBigSmall) {
+            const recentRounds = await WinGoRound.find({
+                gameCode: game.gameCode,
+                status: "settled",
+                predictedBigSmall: { $ne: null },
+            })
+                .sort({ endsAt: -1 })
+                .limit(2)
+                .lean();
+
+            let consecutiveLosses = 0;
+            for (const r of recentRounds) {
+                if (r.predictedBigSmall && r.outcomeBigSmall && r.predictedBigSmall !== r.outcomeBigSmall) {
+                    consecutiveLosses++;
+                } else {
+                    break;
+                }
+            }
+
+            if (consecutiveLosses >= 2) {
+                // Admin's number must match the current round's predictedBigSmall
+                const adminBigSmall = number >= 5 ? "BIG" : "SMALL";
+                if (adminBigSmall !== currentRound.predictedBigSmall) {
+                    const validNumbers = currentRound.predictedBigSmall === "BIG" ? [5, 6, 7, 8, 9] : [0, 1, 2, 3, 4];
+                    return res.status(400).json({
+                        success: false,
+                        message: `Cannot set this number. Last 2 rounds already had wrong predictions. This round's hint is ${currentRound.predictedBigSmall} — you must pick one of: ${validNumbers.join(", ")}.`,
+                    });
+                }
+            }
+        }
+
+        currentRound.outcomeNumber = number;
+        currentRound.outcomeSetByAdmin = true;
+        await currentRound.save();
 
         return res.json({
             success: true,
-            data: { period: nextRound.period, outcomeNumber: nextRound.outcomeNumber },
+            data: { period: currentRound.period, outcomeNumber: currentRound.outcomeNumber, outcomeSetByAdmin: true },
         });
     } catch (error) {
         next(error);
     }
 };
 
-// Admin: unset the prediction on the next upcoming round (revert to random)
+// Admin: unset the prediction on the current open round (revert to random)
 const unsetAdminPrediction = async (req, res, next) => {
     try {
         const gamePath = req.path.replace("/prediction", "");
@@ -379,23 +420,27 @@ const unsetAdminPrediction = async (req, res, next) => {
         }
 
         const now = new Date();
-        const nextRound = await WinGoRound.findOneAndUpdate(
-            {
-                gameCode: game.gameCode,
-                status: { $in: ["scheduled", "open"] },
-                startsAt: { $gt: now },
-            },
-            { $set: { outcomeNumber: null } },
-            { returnDocument: "after", sort: { startsAt: 1 } }
-        );
+        const currentRound = await WinGoRound.findOne({
+            gameCode: game.gameCode,
+            status: "open",
+            endsAt: { $gt: now },
+        });
 
-        if (!nextRound) {
-            return res.status(404).json({ success: false, message: "No upcoming round found" });
+        if (!currentRound) {
+            return res.status(404).json({ success: false, message: "No active round found" });
         }
+
+        if (!currentRound.outcomeSetByAdmin) {
+            return res.status(400).json({ success: false, message: "Cannot unset prediction that was not set by admin" });
+        }
+
+        currentRound.outcomeNumber = null;
+        currentRound.outcomeSetByAdmin = false;
+        await currentRound.save();
 
         return res.json({
             success: true,
-            data: { period: nextRound.period, outcomeNumber: null },
+            data: { period: currentRound.period, outcomeNumber: null, outcomeSetByAdmin: false },
         });
     } catch (error) {
         next(error);

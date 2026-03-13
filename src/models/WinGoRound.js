@@ -29,6 +29,19 @@ const winGoRoundSchema = new mongoose.Schema(
             min: 0,
             max: 9,
         },
+        outcomeSetByAdmin: {
+            type: Boolean,
+            default: false,
+        },
+        predictedBigSmall: {
+            type: String,
+            enum: ["BIG", "SMALL", null],
+            default: null,
+        },
+        predictedSetByAdmin: {
+            type: Boolean,
+            default: false,
+        },
         startsAt: {
             type: Date,
             required: true,
