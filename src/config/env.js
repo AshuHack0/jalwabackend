@@ -12,5 +12,13 @@ export const env = {
   CLEAR_DB_ON_START: process.env.CLEAR_DB_ON_START === "true",
   /** Comma-separated collection names, e.g. "WinGoRound,WinGoBet" or "WinGoRound" */
   CLEAR_DB_COLLECTIONS: process.env.CLEAR_DB_COLLECTIONS || "WinGoRound,WinGoBet",
+
+  // Payment gateway configuration
+  PAYMENT_GATEWAY_URL: process.env.PAYMENT_GATEWAY_URL || "http://localhost:5005",
+  PAYMENT_ACCESS_KEY: process.env.PAYMENT_ACCESS_KEY || "",
+  PAYMENT_ACCESS_SECRET: process.env.PAYMENT_ACCESS_SECRET || "",
+  PAYMENT_CHANNEL_CODE: process.env.PAYMENT_CHANNEL_CODE || "71001",
+  // Full URL to this server's callback endpoint (must be publicly accessible)
+  APP_BASE_URL: process.env.APP_BASE_URL || "http://localhost:3000",
 };
 

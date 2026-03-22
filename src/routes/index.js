@@ -8,6 +8,8 @@ import userAdminRoutes from "./userAdminRoutes.js";
 import bonusRoutes from "./bonusRoutes.js";
 import depositAdminRoutes from "./depositAdminRoutes.js";
 import withdrawalRoutes from "./withdrawalRoutes.js";
+import depositRoutes from "./depositRoutes.js";
+import paymentCallbackRoutes from "./paymentCallbackRoutes.js";
 
 const routes = express.Router();
 
@@ -37,6 +39,12 @@ routes.use("/admin/deposits", depositAdminRoutes);
 
 // Withdrawal routes.
 routes.use("/withdrawals", withdrawalRoutes);
+
+// User-facing deposit routes (initiate real-money deposit via payment gateway).
+routes.use("/deposits", depositRoutes);
+
+// Payment gateway callback (no JWT auth — signature verified internally).
+routes.use("/payments", paymentCallbackRoutes);
 
 // Simple health/welcome endpoint for the API root.
 routes.get("/", (req, res) => {
