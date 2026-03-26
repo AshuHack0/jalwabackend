@@ -5,15 +5,6 @@ import { createPaymentOrder, queryPaymentOrder } from "../services/paymentServic
 import { env } from "../config/env.js";
 
 /**
- * GET /api/v1/deposits/status-redirect
- * Public JumpUrl target after the user finishes on the gateway (browser has no JWT).
- */
-export const statusRedirect = async (req, res) => {
-  const html = `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/><title>Payment</title></head><body style="font-family:system-ui,-apple-system,sans-serif;margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:#0f1a3d;color:#e2e8f8;padding:24px;box-sizing:border-box;"><p style="margin:0;text-align:center;line-height:1.5;">You can close this page and return to the Jalwa app.</p></body></html>`;
-  res.status(200).setHeader("Content-Type", "text/html; charset=utf-8").send(html);
-};
-
-/**
  * POST /api/v1/deposits/initiate
  * User initiates a real-money deposit via the payment gateway.
  * Returns a payUrl to redirect the user to the cashier.

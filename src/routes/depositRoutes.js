@@ -1,18 +1,12 @@
 import express from "express";
-import {
-  initiateDeposit,
-  getDepositStatus,
-  getMyDeposits,
-  statusRedirect,
-} from "../controllers/depositController.js";
+import { initiateDeposit, getDepositStatus, getMyDeposits } from "../controllers/depositController.js";
 import { protect } from "../middleware/authMiddleware.js";
 import { validate } from "../middleware/validateMiddleware.js";
 import { initiateDepositSchema } from "../validations/depositValidations.js";
 
 const router = express.Router();
 
-router.get("/status-redirect", statusRedirect);
-
+// All deposit routes require authentication
 router.use(protect);
 
 // POST /api/v1/deposits/initiate — create a real-money deposit via payment gateway
