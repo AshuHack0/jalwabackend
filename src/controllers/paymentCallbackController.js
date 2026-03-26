@@ -24,6 +24,7 @@ import { logErrorToDbAsync } from "../utils/logErrorToDb.js";
  */
 export const handlePaymentCallback = async (req, res) => {
   console.log("handlePaymentCallback======>>>",req.body)
+  console.log("handlePaymentCallback headers======>>>",req.headers)
   try {
     // Verify gateway signature
     const urlPath = "/api/v1/payments/callback";

@@ -40,7 +40,10 @@ function buildHeaders(method, urlPath) {
  * The gateway sends the same headers as we send to it.
  */
 export function verifyCallbackSignature(method, urlPath, headers) {
-  const { accessKey, timestamp, nonce, sign } = headers;
+  const accessKey = headers["accesskey"] ?? headers["accessKey"];
+  const timestamp = headers["timestamp"];
+  const nonce = headers["nonce"];
+  const sign = headers["sign"];
 
   // Only verify if we have a configured secret (skip in dev if not set)
   if (!env.PAYMENT_ACCESS_SECRET) return true;
