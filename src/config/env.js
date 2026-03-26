@@ -18,7 +18,9 @@ export const env = {
   PAYMENT_ACCESS_KEY: process.env.PAYMENT_ACCESS_KEY || "",
   PAYMENT_ACCESS_SECRET: process.env.PAYMENT_ACCESS_SECRET || "",
   PAYMENT_CHANNEL_CODE: process.env.PAYMENT_CHANNEL_CODE || "71001",
-  // Full URL to this server's callback endpoint (must be publicly accessible)
-  APP_BASE_URL: process.env.APP_BASE_URL || "http://localhost:3000",
+  // Backend production URL — must be publicly reachable by the payment gateway
+  BACKEND_URL: process.env.BACKEND_URL || "https://api.indgames.online",
+  // Deep link scheme for the mobile app — used as JumpUrl after payment
+  APP_FRONTEND_URL: process.env.APP_FRONTEND_URL || "jalwaapp://",
 };
 

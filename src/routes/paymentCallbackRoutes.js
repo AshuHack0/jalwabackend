@@ -4,6 +4,6 @@ import { handlePaymentCallback } from "../controllers/paymentCallbackController.
 const router = express.Router();
 
 // POST /api/v1/payments/callback — called by the payment gateway (no JWT auth, signature verified internally)
-router.get("/callback", handlePaymentCallback);
+router.post("/callback", handlePaymentCallback);
 
 export default router;

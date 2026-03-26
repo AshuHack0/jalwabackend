@@ -84,8 +84,6 @@ export async function createPaymentOrder({
     JumpUrl: jumpUrl,
   };
 
-  console.log(body)
-
   const response = await axios.post(
     `${env.PAYMENT_GATEWAY_URL}${urlPath}`,
     body,
@@ -93,7 +91,6 @@ export async function createPaymentOrder({
   );
 
   const data = response.data;
-  console.log("data------------->>>>>",data)
 
   if (data.code !== 200) {
     throw new Error(data.message || "Gateway returned error");

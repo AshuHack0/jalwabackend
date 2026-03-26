@@ -17,8 +17,8 @@ export const initiateDeposit = async (req, res, next) => {
     // Generate a unique merchant-side order number
     const merchantOrderNo = `JW${Date.now()}${uuidv4().replace(/-/g, "").slice(0, 8).toUpperCase()}`;
 
-    const callbackUrl = `${env.APP_BASE_URL}/api/v1/payments/callback`;
-    const jumpUrl = `${env.APP_BASE_URL}/api/v1/deposits/status-redirect`;
+    const callbackUrl = `${env.BACKEND_URL}/api/v1/payments/callback`;
+    const jumpUrl = `${env.APP_FRONTEND_URL}/deposit/status/${merchantOrderNo}`;
 
     // Create the order in gateway first
     let gatewayResult;
@@ -29,6 +29,8 @@ export const initiateDeposit = async (req, res, next) => {
         callbackUrl,
         jumpUrl,
       });
+
+      console.log("createPaymentOrder======>>>",gatewayResult)
     } catch (err) {
       console.error("[initiateDeposit] Gateway error:", err);
       return res.status(502).json({
