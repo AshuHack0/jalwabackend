@@ -45,6 +45,11 @@ app.use((err, req, res, next) => {
 });
 
 connectDB().then(() => {
+  if (env.NODE_ENV === "production" && String(env.APP_BASE_URL).includes("localhost")) {
+    console.warn(
+      "[payment] APP_BASE_URL points to localhost in production. Set APP_BASE_URL to your public API URL (e.g. https://api.indgames.online) so gateway CallBackUrl/JumpUrl work."
+    );
+  }
   app.listen(env.PORT, () => {
     console.log(`🚀 Server is running at http://localhost:${env.PORT}`);
     startWinGoScheduler();

@@ -99,7 +99,17 @@ export async function createPaymentOrder({
     throw new Error(data.message || "Gateway returned error");
   }
 
-  return data.result;
+  const result = data.result;
+  if (!result || typeof result !== "object") {
+    throw new Error(data.message || "Invalid gateway response");
+  }
+  const payUrl = result.payUrl ?? result.PayUrl;
+  const orderNo = result.orderNo ?? result.OrderNo;
+  if (!payUrl || !orderNo) {
+    throw new Error(data.message || "Gateway did not return payUrl or orderNo");
+  }
+
+  return { ...result, payUrl, orderNo };
 }
 
 /**
