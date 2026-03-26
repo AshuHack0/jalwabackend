@@ -24,9 +24,10 @@ import { logErrorToDbAsync } from "../utils/logErrorToDb.js";
  */
 export const handlePaymentCallback = async (req, res) => {
   try {
-    // Verify gateway signature
+    // Verify gateway signature 
+    console.log("req.headers===========>>>",req)
     const urlPath = "/api/v1/payments/callback";
-    const isValid = verifyCallbackSignature("POST", urlPath, req.headers);
+    const isValid = verifyCallbackSignature("GET", urlPath, req.headers);
 
     if (!isValid) {
       logErrorToDbAsync(new Error("Invalid payment callback signature"), {
