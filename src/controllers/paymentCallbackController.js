@@ -1,4 +1,5 @@
 import Deposit from "../models/Deposit.js";
+import Withdrawal from "../models/Withdrawal.js";
 import User from "../models/User.js";
 import { verifyCallbackSignature } from "../services/paymentService.js";
 import { logErrorToDbAsync } from "../utils/logErrorToDb.js";
@@ -93,6 +94,87 @@ export const handlePaymentCallback = async (req, res) => {
       context: { body: req.body },
     });
     // Always return "success" so the gateway doesn't keep retrying
+    return res.status(200).send("success");
+  }
+};
+
+/**
+ * POST /api/v1/payments/payout-callback
+ *
+ * Called by the payment gateway when a payout (withdrawal) order's status changes.
+ *
+ * Callback body from gateway:
+ * {
+ *   orderno:        string  (gateway order number)
+ *   merchantorder:  string  (our merchant order number / orderId)
+ *   currency:       string  ("inr")
+ *   amount:         number
+ *   fee:            number
+ *   proof:          string
+ *   status:         string  ("success" | "fail")
+ *   createtime:     string
+ *   updatetime:     string
+ * }
+ */
+export const handlePayoutCallback = async (req, res) => {
+  console.log("handlePayoutCallback======>>>", req.body);
+  console.log("handlePayoutCallback headers======>>>", req.headers);
+  try {
+    const urlPath = "/api/v1/payments/payout-callback";
+    const isValid = verifyCallbackSignature("POST", urlPath, req.headers);
+
+    console.log("isValid====>", isValid)
+
+    if (!isValid) {
+      logErrorToDbAsync(new Error("Invalid payout callback signature"), {
+        source: "payoutCallback",
+        context: { headers: req.headers, body: req.body },
+      });
+      return res.status(200).send("success");
+    }
+
+    const { orderno, merchantorder, proof, status } = req.body;
+
+    if (!merchantorder || !status) {
+      return res.status(200).send("success");
+    }
+
+    const withdrawal = await Withdrawal.findOne({ orderId: merchantorder });
+
+    if (!withdrawal) {
+      logErrorToDbAsync(new Error("Payout callback received for unknown order"), {
+        source: "payoutCallback",
+        context: { merchantorder, orderno, status },
+      });
+      return res.status(200).send("success");
+    }
+
+    // Ignore duplicate callbacks for already-finalized withdrawals
+    if (withdrawal.status !== "pending") {
+      return res.status(200).send("success");
+    }
+
+    if (status === "success") {
+      withdrawal.status = "approved";
+      withdrawal.paymentRef = proof || orderno || withdrawal.paymentRef;
+      await withdrawal.save();
+    } else if (status === "fail" || status === "failed") {
+      withdrawal.status = "rejected";
+      withdrawal.remark = "Gateway payout failed";
+      await withdrawal.save();
+
+      // Refund wallet
+      await User.findByIdAndUpdate(withdrawal.user, {
+        $inc: { walletBalance: withdrawal.amount },
+      });
+    }
+
+    return res.status(200).send("success");
+  } catch (error) {
+    logErrorToDbAsync(error, {
+      source: "payoutCallback",
+      context: { body: req.body },
+    });
     return res.status(200).send("success");
   }
 };
