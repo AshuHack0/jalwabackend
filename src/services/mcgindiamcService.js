@@ -11,9 +11,9 @@ import { env } from "../config/env.js";
  * Then HMAC-SHA256 with accessSecret as key, Base64-encoded.
  */
 function buildSignature(method, urlPath, timestamp, nonce) {
-  const data = `${method.toUpperCase()}&${urlPath}&${env.PAYMENT_ACCESS_KEY}&${timestamp}&${nonce}`;
+  const data = `${method.toUpperCase()}&${urlPath}&${env.MCGINDIAMC_ACCESS_KEY}&${timestamp}&${nonce}`;
   return crypto
-    .createHmac("sha256", env.PAYMENT_ACCESS_SECRET)
+    .createHmac("sha256", env.MCGINDIAMC_ACCESS_SECRET)
     .update(data)
     .digest("base64");
 }
@@ -27,7 +27,7 @@ function buildHeaders(method, urlPath) {
   const sign = buildSignature(method, urlPath, timestamp, nonce);
 
   return {
-    accessKey: env.PAYMENT_ACCESS_KEY,
+    accessKey: env.MCGINDIAMC_ACCESS_KEY,
     timestamp,
     nonce,
     sign,
@@ -39,18 +39,18 @@ function buildHeaders(method, urlPath) {
  * Verifies the signature from an incoming gateway callback.
  * The gateway sends the same headers as we send to it.
  */
-export function verifyCallbackSignature(method, urlPath, headers) {
+export function verifyMcgindiamcCallbackSignature(method, urlPath, headers) {
   const accessKey = headers["accesskey"] ?? headers["accessKey"];
   const timestamp = headers["timestamp"];
   const nonce = headers["nonce"];
   const sign = headers["sign"];
 
   // Only verify if we have a configured secret (skip in dev if not set)
-  if (!env.PAYMENT_ACCESS_SECRET) return true;
+  if (!env.MCGINDIAMC_ACCESS_SECRET) return true;
 
   const data = `${method.toUpperCase()}&${urlPath}&${accessKey}&${timestamp}&${nonce}`;
   const expected = crypto
-    .createHmac("sha256", env.PAYMENT_ACCESS_SECRET)
+    .createHmac("sha256", env.MCGINDIAMC_ACCESS_SECRET)
     .update(data)
     .digest("base64");
 
@@ -68,7 +68,7 @@ export function verifyCallbackSignature(method, urlPath, headers) {
  * @param {string} [params.channelCode]   - Payment channel (default from env)
  * @returns {Promise<object>} Gateway response result object
  */
-export async function createPaymentOrder({
+export async function createMcgindiamcOrder({
   merchantOrderNo,
   amount,
   callbackUrl,
@@ -82,16 +82,18 @@ export async function createPaymentOrder({
     McorderNo: merchantOrderNo,
     Amount: String(amount),
     Type: "inr",
-    ChannelCode: channelCode || env.PAYMENT_CHANNEL_CODE,
+    ChannelCode: channelCode || env.MCGINDIAMC_CHANNEL_CODE,
     CallBackUrl: callbackUrl,
     JumpUrl: jumpUrl,
   };
 
   const response = await axios.post(
-    `${env.PAYMENT_GATEWAY_URL}${urlPath}`,
+    `${env.MCGINDIAMC_GATEWAY_URL}${urlPath}`,
     body,
     { headers, timeout: 15000 }
   );
+
+  console.log("gaitway Res==>",response)
 
   const data = response.data;
 
@@ -108,12 +110,12 @@ export async function createPaymentOrder({
  * @param {string} orderNo - Either gateway order number or merchant order number
  * @returns {Promise<object>} Order status object from gateway
  */
-export async function queryPaymentOrder(orderNo) {
+export async function queryMcgindiamcOrder(orderNo) {
   const urlPath = "/api/order/queryorder";
   const headers = buildHeaders("POST", urlPath);
 
   const response = await axios.post(
-    `${env.PAYMENT_GATEWAY_URL}${urlPath}`,
+    `${env.MCGINDIAMC_GATEWAY_URL}${urlPath}`,
     { orderNo },
     { headers, timeout: 10000 }
   );
@@ -137,7 +139,7 @@ export async function getMerchantBalance() {
   const headers = buildHeaders("GET", urlPath);
 
   const response = await axios.get(
-    `${env.PAYMENT_GATEWAY_URL}${urlPath}`,
+    `${env.MCGINDIAMC_GATEWAY_URL}${urlPath}`,
     { headers, timeout: 10000 }
   );
 

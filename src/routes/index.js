@@ -8,9 +8,10 @@ import userAdminRoutes from "./userAdminRoutes.js";
 import bonusRoutes from "./bonusRoutes.js";
 import depositAdminRoutes from "./depositAdminRoutes.js";
 import withdrawalRoutes from "./withdrawalRoutes.js";
-import depositRoutes from "./depositRoutes.js";
-import paymentCallbackRoutes from "./paymentCallbackRoutes.js";
+import mcgindiamcDepositRoutes from "./mcgindiamcDepositRoutes.js";
+import callbackRoutes from "./callbackRoutes.js";
 import bankAccountRoutes from "./bankAccountRoutes.js";
+import oxoxmgDepositRoutes from "./oxoxmgDepositRoutes.js";
 
 const routes = express.Router();
 
@@ -41,14 +42,17 @@ routes.use("/admin/deposits", depositAdminRoutes);
 // Withdrawal routes.
 routes.use("/withdrawals", withdrawalRoutes);
 
-// User-facing deposit routes (initiate real-money deposit via payment gateway).
-routes.use("/deposits", depositRoutes);
+// Mcgindiamc deposit routes.
+routes.use("/deposits", mcgindiamcDepositRoutes);
 
 // Payment gateway callback (no JWT auth — signature verified internally).
-routes.use("/payments", paymentCallbackRoutes);
+routes.use("/payments", callbackRoutes);
 
 // Bank account routes (user-facing).
 routes.use("/bank-account", bankAccountRoutes);
+
+// Oxoxmg deposit routes.
+routes.use("/oxoxmg/deposits", oxoxmgDepositRoutes);
 
 // Simple health/welcome endpoint for the API root.
 routes.get("/", (req, res) => {

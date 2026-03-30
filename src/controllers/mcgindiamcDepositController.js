@@ -1,7 +1,7 @@
 import { v4 as uuidv4 } from "uuid";
 import Deposit from "../models/Deposit.js";
 import User from "../models/User.js";
-import { createPaymentOrder, queryPaymentOrder } from "../services/paymentService.js";
+import { createMcgindiamcOrder, queryMcgindiamcOrder } from "../services/mcgindiamcService.js";
 import { env } from "../config/env.js";
 
 /**
@@ -9,7 +9,7 @@ import { env } from "../config/env.js";
  * User initiates a real-money deposit via the payment gateway.
  * Returns a payUrl to redirect the user to the cashier.
  */
-export const initiateDeposit = async (req, res, next) => {
+export const initiateMcgindiamcDeposit = async (req, res, next) => {
   try {
     const { amount } = req.validated;
     const user = req.user;
@@ -17,22 +17,22 @@ export const initiateDeposit = async (req, res, next) => {
     // Generate a unique merchant-side order number
     const merchantOrderNo = `JW${Date.now()}${uuidv4().replace(/-/g, "").slice(0, 8).toUpperCase()}`;
 
-    const callbackUrl = `${env.BACKEND_URL}/api/v1/payments/callback`;
+    const callbackUrl = `${env.BACKEND_URL}/api/v1/payments/mcgindiamc-callback`;
     const jumpUrl = `${env.APP_FRONTEND_URL}/deposit/status/${merchantOrderNo}`;
 
     // Create the order in gateway first
     let gatewayResult;
     try {
-      gatewayResult = await createPaymentOrder({
+      gatewayResult = await createMcgindiamcOrder({
         merchantOrderNo,
         amount,
         callbackUrl,
         jumpUrl,
       });
 
-      console.log("createPaymentOrder======>>>",gatewayResult)
+      console.log("createMcgindiamcOrder======>>>",gatewayResult)
     } catch (err) {
-      console.error("[initiateDeposit] Gateway error:", err);
+      console.error("[initiateMcgindiamcDeposit] Gateway error:", err);
       return res.status(502).json({
         success: false,
         message: `Payment gateway error: ${err.message}`,
@@ -48,10 +48,11 @@ export const initiateDeposit = async (req, res, next) => {
       gatewayOrderNo: gatewayResult.orderNo,
       merchantOrderNo,
       payUrl: gatewayResult.payUrl,
-      channelCode: String(gatewayResult.channelCode || env.PAYMENT_CHANNEL_CODE),
+      channelCode: String(gatewayResult.channelCode || env.MCGINDIAMC_CHANNEL_CODE),
       fee: gatewayResult.fee || 0,
       expireTime: gatewayResult.expireTime || 1800,
       isGatewayPayment: true,
+      gateway: "mcgindiamc",
     });
 
     res.status(201).json({
@@ -69,7 +70,7 @@ export const initiateDeposit = async (req, res, next) => {
       },
     });
   } catch (error) {
-    console.error("[initiateDeposit] Unexpected error:", error);
+    console.error("[initiateMcgindiamcDeposit] Unexpected error:", error);
     next(error);
   }
 };
@@ -78,7 +79,7 @@ export const initiateDeposit = async (req, res, next) => {
  * GET /api/v1/deposits/status/:merchantOrderNo
  * User polls the status of their deposit.
  */
-export const getDepositStatus = async (req, res, next) => {
+export const getMcgindiamcDepositStatus = async (req, res, next) => {
   try {
     const { merchantOrderNo } = req.params;
     const user = req.user;
@@ -86,6 +87,7 @@ export const getDepositStatus = async (req, res, next) => {
     const deposit = await Deposit.findOne({
       merchantOrderNo,
       user: user._id,
+      gateway: "mcgindiamc",
     });
 
     if (!deposit) {
@@ -95,7 +97,7 @@ export const getDepositStatus = async (req, res, next) => {
     // If still pending and is a gateway payment, check gateway for latest status
     if (deposit.status === "pending" && deposit.isGatewayPayment && deposit.gatewayOrderNo) {
       try {
-        const gatewayStatus = await queryPaymentOrder(deposit.gatewayOrderNo);
+        const gatewayStatus = await queryMcgindiamcOrder(deposit.gatewayOrderNo);
 
         if (gatewayStatus.status === "success") {
           // Callback may have been missed — credit wallet here as a fallback
@@ -112,7 +114,7 @@ export const getDepositStatus = async (req, res, next) => {
           await deposit.save();
         }
       } catch (queryErr) {
-        console.error("[getDepositStatus] Gateway query error:", queryErr);
+        console.error("[getMcgindiamcDepositStatus] Gateway query error:", queryErr);
         // Return cached status, don't block the response
       }
     }
@@ -134,7 +136,7 @@ export const getDepositStatus = async (req, res, next) => {
       },
     });
   } catch (error) {
-    console.error("[getDepositStatus] Unexpected error:", error);
+    console.error("[getMcgindiamcDepositStatus] Unexpected error:", error);
     next(error);
   }
 };
@@ -143,7 +145,7 @@ export const getDepositStatus = async (req, res, next) => {
  * GET /api/v1/deposits/my
  * Returns the authenticated user's deposit history.
  */
-export const getMyDeposits = async (req, res, next) => {
+export const getMcgindiamcMyDeposits = async (req, res, next) => {
   try {
     const { page = 1, limit = 20 } = req.query;
     const skip = (parseInt(page) - 1) * parseInt(limit);
@@ -167,7 +169,7 @@ export const getMyDeposits = async (req, res, next) => {
       },
     });
   } catch (error) {
-    console.error("[getMyDeposits] Unexpected error:", error);
+    console.error("[getMcgindiamcMyDeposits] Unexpected error:", error);
     next(error);
   }
 };
