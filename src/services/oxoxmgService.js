@@ -56,6 +56,8 @@ export async function createOxoxmgOrder({
     payer_id: payerId || "",
   };
 
+  console.log("Oxoxmg create order params:", params);
+
   params.sign = buildSign(params);
 
   const response = await axios.post(
@@ -68,6 +70,8 @@ export async function createOxoxmgOrder({
   );
 
   const data = response.data;
+
+  console.log("Oxoxmg create order response:", data);
 
   if (data.code !== 200) {
     throw new Error(data.errmsg || "Oxoxmg gateway returned error");
