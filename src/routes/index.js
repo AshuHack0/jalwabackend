@@ -12,6 +12,7 @@ import mcgindiamcDepositRoutes from "./mcgindiamcDepositRoutes.js";
 import callbackRoutes from "./callbackRoutes.js";
 import bankAccountRoutes from "./bankAccountRoutes.js";
 import oxoxmgDepositRoutes from "./oxoxmgDepositRoutes.js";
+import usdtDepositRoutes from "./usdtDepositRoutes.js";
 
 const routes = express.Router();
 
@@ -54,8 +55,11 @@ routes.use("/bank-account", bankAccountRoutes);
 // Oxoxmg deposit routes.
 routes.use("/oxoxmg/deposits", oxoxmgDepositRoutes);
 
+// USDT deposit routes.
+routes.use("/usdt/deposits", usdtDepositRoutes);
+
 // Simple health/welcome endpoint for the API root.
-routes.get("/", (req, res) => {
+routes.get("/", (_req, res) => {
   res.json({ message: "Welcome to the API!" });
 });
 

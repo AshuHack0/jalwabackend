@@ -70,7 +70,7 @@ const depositSchema = new mongoose.Schema(
     // Which gateway processed this deposit: "gateway1" | "oxpay"
     gateway: {
       type: String,
-      enum: ["mcgindiamc", "oxoxmg"],
+      enum: ["mcgindiamc", "oxoxmg", "usdt"],
       default: "mcgindiamc",
     },
   },

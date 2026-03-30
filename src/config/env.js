@@ -15,7 +15,7 @@ export const env = {
   APP_FRONTEND_URL: process.env.APP_FRONTEND_URL || "jalwaapp://",
 
   // Mcgindiamc gateway configuration
-  MCGINDIAMC_GATEWAY_URL: process.env.MCGINDIAMC_GATEWAY_URL || "http://localhost:5005",
+  MCGINDIAMC_GATEWAY_URL: process.env.MCGINDIAMC_GATEWAY_URL || "https://mcapi.mcgindiamc.com",
   MCGINDIAMC_ACCESS_KEY: process.env.MCGINDIAMC_ACCESS_KEY || "",
   MCGINDIAMC_ACCESS_SECRET: process.env.MCGINDIAMC_ACCESS_SECRET || "",
   MCGINDIAMC_CHANNEL_CODE: process.env.MCGINDIAMC_CHANNEL_CODE || "71001",
@@ -25,6 +25,11 @@ export const env = {
   OXOXMG_MERCHANT_ID: process.env.OXOXMG_MERCHANT_ID || "",
   OXOXMG_MD5_KEY: process.env.OXOXMG_MD5_KEY || "",
   OXOXMG_PASSAGE_CODE: process.env.OXOXMG_PASSAGE_CODE || "100001",
+
+  // USDT gateway configuration
+  USDT_GATEWAY_URL: process.env.USDT_GATEWAY_URL || "https://mcapi.aymercher.com",
+  USDT_ACCESS_KEY: process.env.USDT_ACCESS_KEY || "",
+  USDT_ACCESS_SECRET: process.env.USDT_ACCESS_SECRET || "",
 
 };
 

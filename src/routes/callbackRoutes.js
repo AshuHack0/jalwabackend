@@ -1,5 +1,5 @@
 import express from "express";
-import { handleMcgCallback, handleOxoxmgCallback } from "../controllers/callbackController.js";
+import { handleMcgCallback, handleOxoxmgCallback, handleUsdtCallback } from "../controllers/callbackController.js";
 
 const router = express.Router();
 
@@ -8,5 +8,8 @@ router.post("/mcgindiamc-callback", handleMcgCallback);
 
 // POST /api/v1/payments/oxoxmg-callback — deposit callback from Oxoxmg
 router.post("/oxoxmg-callback", handleOxoxmgCallback);
+
+// POST /api/v1/payments/usdt-callback — deposit callback from USDT gateway
+router.post("/usdt-callback", handleUsdtCallback);
 
 export default router;
