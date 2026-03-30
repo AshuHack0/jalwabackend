@@ -1,8 +1,6 @@
 import { v4 as uuidv4 } from "uuid";
 import Withdrawal from "../models/Withdrawal.js";
 import User from "../models/User.js";
-import { createPayoutOrder } from "../services/paymentService.js";
-import { env } from "../config/env.js";
 
 const MIN_WITHDRAWAL = 100;
 const MAX_WITHDRAWAL = 50000;
@@ -40,37 +38,11 @@ export const initiateWithdrawal = async (req, res, next) => {
     }
 
     const merchantOrderNo = `WD${Date.now()}${uuidv4().replace(/-/g, "").slice(0, 8).toUpperCase()}`;
-    const notifyUrl = `${env.BACKEND_URL}/api/v1/payments/payout-callback`;
 
-    // Deduct from wallet (hold funds)
+    // Deduct from wallet (hold funds pending admin approval)
     await User.findByIdAndUpdate(freshUser._id, {
       $inc: { walletBalance: -withdrawAmount },
     });
-
-    let gatewayResult;
-    try {
-      gatewayResult = await createPayoutOrder({
-        merchantOrderNo,
-        amount: withdrawAmount,
-        name: freshUser.accountHolder,
-        bankName: freshUser.bankName,
-        bankAccount: freshUser.accountNumber,
-        ifsc: freshUser.ifscCode,
-        notifyUrl,
-      });
-
-      console.log("gatewayResult widrawel====>>", gatewayResult)
-    } catch (err) {
-      // Refund wallet if gateway fails
-      await User.findByIdAndUpdate(freshUser._id, {
-        $inc: { walletBalance: withdrawAmount },
-      });
-      console.error("[initiateWithdrawal] Gateway error:", err);
-      return res.status(502).json({
-        success: false,
-        message: `Payment gateway error: ${err.message}`,
-      });
-    }
 
     const withdrawal = await Withdrawal.create({
       user: freshUser._id,
@@ -78,7 +50,6 @@ export const initiateWithdrawal = async (req, res, next) => {
       amount: withdrawAmount,
       status: "pending",
       orderId: merchantOrderNo,
-      paymentRef: gatewayResult.orderNo || null,
       bankName: freshUser.bankName,
       accountHolder: freshUser.accountHolder,
       accountNumber: freshUser.accountNumber,
@@ -87,13 +58,11 @@ export const initiateWithdrawal = async (req, res, next) => {
 
     res.status(201).json({
       success: true,
-      message: "Withdrawal initiated successfully",
+      message: "Withdrawal request submitted. Pending admin approval.",
       data: {
         withdrawalId: withdrawal._id,
         merchantOrderNo,
-        gatewayOrderNo: gatewayResult.orderNo,
         amount: withdrawAmount,
-        fee: gatewayResult.fee || 0,
         status: "pending",
       },
     });
