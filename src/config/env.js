@@ -30,6 +30,8 @@ export const env = {
   USDT_GATEWAY_URL: process.env.USDT_GATEWAY_URL || "https://mcapi.aymercher.com",
   USDT_ACCESS_KEY: process.env.USDT_ACCESS_KEY || "",
   USDT_ACCESS_SECRET: process.env.USDT_ACCESS_SECRET || "",
+  // ChannelCode for USDT-TRC20 — ask your gateway provider for the correct value
+  USDT_CHANNEL_CODE: process.env.USDT_CHANNEL_CODE || "91001",
 
 };
 

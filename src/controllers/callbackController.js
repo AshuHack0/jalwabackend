@@ -197,13 +197,13 @@ export const handleUsdtCallback = async (req, res) => {
         source: "usdtCallback",
         context: { headers: req.headers, body: req.body },
       });
-      return res.status(200).send("SUCCESS");
+      return res.status(200).send("success");
     }
 
     const { orderno, merchantorder, fee, proof, status } = req.body;
 
     if (!merchantorder || !status) {
-      return res.status(200).send("SUCCESS");
+      return res.status(200).send("success");
     }
 
     const deposit = await Deposit.findOne({ merchantOrderNo: merchantorder, gateway: "usdt" });
@@ -213,11 +213,11 @@ export const handleUsdtCallback = async (req, res) => {
         source: "usdtCallback",
         context: { merchantorder, orderno, status },
       });
-      return res.status(200).send("SUCCESS");
+      return res.status(200).send("success");
     }
 
     if (deposit.status === "completed" || deposit.status === "failed") {
-      return res.status(200).send("SUCCESS");
+      return res.status(200).send("success");
     }
 
     if (status === "success") {
@@ -239,12 +239,12 @@ export const handleUsdtCallback = async (req, res) => {
       await deposit.save();
     }
 
-    return res.status(200).send("SUCCESS");
+    return res.status(200).send("success");
   } catch (error) {
     logErrorToDbAsync(error, {
       source: "usdtCallback",
       context: { body: req.body },
     });
-    return res.status(200).send("SUCCESS");
+    return res.status(200).send("success");
   }
 };

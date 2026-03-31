@@ -24,7 +24,6 @@ export const initiateUsdtDeposit = async (req, res, next) => {
       gatewayResult = await createUsdtDepositOrder({
         merchantOrderNo,
         amount,
-        network,
         callbackUrl,
         jumpUrl,
       });
@@ -43,9 +42,9 @@ export const initiateUsdtDeposit = async (req, res, next) => {
       amount,
       status: "pending",
       orderId: merchantOrderNo,
-      gatewayOrderNo: gatewayResult.orderId,
+      gatewayOrderNo: gatewayResult.orderNo,
       merchantOrderNo,
-      payUrl: gatewayResult.address,   // wallet address stored in payUrl field
+      payUrl: gatewayResult.address || gatewayResult.payUrl,   // wallet address (USDT) or cashier URL
       channelCode: network,
       fee: gatewayResult.fee || 0,
       expireTime: gatewayResult.expireTime || null,
@@ -59,11 +58,11 @@ export const initiateUsdtDeposit = async (req, res, next) => {
       data: {
         depositId: deposit._id,
         merchantOrderNo,
-        orderId: gatewayResult.orderId,
+        orderId: gatewayResult.orderNo,
         amount,
         currency: "usdt",
         network,
-        address: gatewayResult.address,
+        address: gatewayResult.address || gatewayResult.payUrl,
         qrCode: gatewayResult.qrCode || null,
         expireTime: gatewayResult.expireTime || null,
         status: "pending",
@@ -101,7 +100,7 @@ export const getUsdtDepositStatus = async (req, res, next) => {
         if (gatewayStatus.status === "success") {
           deposit.status = "completed";
           deposit.proof = gatewayStatus.proof || deposit.proof;
-          deposit.gatewayOrderNo = gatewayStatus.orderId || deposit.gatewayOrderNo;
+          deposit.gatewayOrderNo = gatewayStatus.orderno || deposit.gatewayOrderNo;
           await deposit.save();
 
           await User.findByIdAndUpdate(deposit.user, {

@@ -62,14 +62,12 @@ export function verifyUsdtCallbackSignature(method, urlPath, headers) {
  * @param {object} params
  * @param {string} params.merchantOrderNo - Unique order ID from our side
  * @param {number} params.amount          - Amount in USDT
- * @param {string} params.network         - "TRC20" | "ERC20" | "BEP20"
  * @param {string} params.callbackUrl     - Our server's callback URL
  * @param {string} params.jumpUrl         - Redirect URL after payment
  */
 export async function createUsdtDepositOrder({
   merchantOrderNo,
   amount,
-  network,
   callbackUrl,
   jumpUrl,
 }) {
@@ -80,7 +78,7 @@ export async function createUsdtDepositOrder({
     McorderNo: merchantOrderNo,
     Amount: String(amount),
     Type: "usdt",
-    Network: network,
+    ChannelCode: env.USDT_CHANNEL_CODE,
     CallBackUrl: callbackUrl,
     JumpUrl: jumpUrl,
   };
@@ -117,9 +115,12 @@ export async function queryUsdtDepositOrder(orderNo) {
   );
 
   const data = response.data;
-  if (data.code !== 200) {
+
+  // Query response is a flat object (no code/result wrapper), unlike create order.
+  // If the gateway returns an error it wraps it: {code: !200, message: "..."}
+  if (data.code !== undefined && data.code !== 200) {
     throw new Error(data.message || "USDT gateway query failed");
   }
 
-  return data.result;
+  return data;
 }
