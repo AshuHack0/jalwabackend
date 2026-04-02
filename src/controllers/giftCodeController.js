@@ -1,4 +1,5 @@
 import GiftCode from "../models/GiftCode.js";
+import User from "../models/User.js";
 
 // Generates a random alphanumeric gift code string.
 function generateCode() {
@@ -9,6 +10,37 @@ function generateCode() {
     }
     return code;
 }
+
+// GET /gift-codes/claim — user claims a gift code if totalDeposited >= 5000
+export const claimGiftCode = async (req, res, next) => {
+    try {
+        const user = await User.findById(req.user._id).select("totalDeposited");
+        if (!user) {
+            return res.status(404).json({ success: false, message: "User not found" });
+        }
+
+        const totalDeposited = user.totalDeposited ?? 0;
+        if (totalDeposited < 5000) {
+            return res.status(403).json({
+                success: false,
+                message: `Your total deposit must be at least ₹5000 to generate a gift code. Current: ₹${totalDeposited}`,
+            });
+        }
+
+        const giftCode = await GiftCode.findOne({
+            isActive: true,
+            $expr: { $lt: ["$usedCount", "$maxUses"] },
+        });
+
+        if (!giftCode) {
+            return res.status(404).json({ success: false, message: "No gift codes available at the moment" });
+        }
+
+        res.status(200).json({ success: true, data: { code: giftCode.code, amount: giftCode.amount } });
+    } catch (error) {
+        next(error);
+    }
+};
 
 // POST /gift-codes/generate — bulk generate gift codes (admin only)
 export const generateGiftCodes = async (req, res, next) => {
