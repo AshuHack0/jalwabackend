@@ -17,7 +17,7 @@ export const initiateUsdtDeposit = async (req, res, next) => {
     const merchantOrderNo = `USDT${Date.now()}${uuidv4().replace(/-/g, "").slice(0, 8).toUpperCase()}`;
 
     const callbackUrl = `${env.BACKEND_URL}/api/v1/payments/usdt-callback`;
-    const jumpUrl = `${env.APP_FRONTEND_URL}/deposit/status/${merchantOrderNo}`;
+    const jumpUrl = `${env.APP_FRONTEND_URL}/deposit/usdt-status/${merchantOrderNo}`;
 
     let gatewayResult;
     try {

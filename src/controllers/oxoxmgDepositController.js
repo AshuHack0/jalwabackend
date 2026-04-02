@@ -22,7 +22,7 @@ export const initiateOxoxmgDeposit = async (req, res, next) => {
     const merchantOrderNo = `SH${Date.now()}${uuidv4().replace(/-/g, "").slice(0, 8).toUpperCase()}`;
 
     const notifyUrl = `${env.BACKEND_URL}/api/v1/payments/oxoxmg-callback`;
-    const callbackUrl = `${env.APP_FRONTEND_URL}/deposit/status/${merchantOrderNo}`;
+    const callbackUrl = `${env.APP_FRONTEND_URL}/deposit/oxoxmg-status/${merchantOrderNo}`;
 
     let gatewayResult;
     try {
