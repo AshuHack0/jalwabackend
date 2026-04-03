@@ -27,10 +27,11 @@ const placeBet = async (req, res, next) => {
         const { betType: normalizedBetType, choice, amount, period } = req.validated;
 
         const round = period
-            ? await WinGoRound.findOne({ period, status: "open" })
+            ? await WinGoRound.findOne({ period })
             : null;
 
-        if (!round) {
+        // Round not found or hasn't opened yet
+        if (!round || round.status === "scheduled") {
             return res.status(400).json({
                 success: false,
                 message: "No active WinGo round available.",
@@ -39,7 +40,8 @@ const placeBet = async (req, res, next) => {
 
         const now = new Date();
         const bettingDeadline = new Date(round.endsAt.getTime() - DRAW_DURATION_MS);
-        if (now < round.startsAt || now > bettingDeadline || round.status !== "open") {
+        // Round is past betting window (processing/closed/settled) or deadline passed
+        if (round.status !== "open" || now < round.startsAt || now > bettingDeadline) {
             return res.status(400).json({
                 success: false,
                 message: "Betting for this round is closed.",
@@ -447,4 +449,185 @@ const unsetAdminPrediction = async (req, res, next) => {
     }
 };
 
-export { placeBet, getCurrentRound, getGameHistory, getMyHistory, getAdminPrediction, setAdminPrediction, unsetAdminPrediction };
+/* ============================================================
+   ADMIN: GET NEXT ROUND PREDICTION
+   Returns the predictedBigSmall set on the next scheduled round.
+============================================================ */
+const getNextPrediction = async (req, res, next) => {
+    try {
+        const gamePath = req.path.replace("/nextPrediction", "");
+        const durationSeconds = DURATION_FROM_PATH[gamePath];
+        if (!durationSeconds) {
+            return res.status(400).json({ success: false, message: "Invalid WinGo game route" });
+        }
+        const game = GAME_BY_DURATION[durationSeconds];
+        if (!game) {
+            return res.status(404).json({ success: false, message: "WinGo game not found" });
+        }
+
+        const nextRound = await WinGoRound.findOne({
+            gameCode: game.gameCode,
+            status: { $in: ["scheduled", "open"] },
+            startsAt: { $gt: new Date() },
+        })
+            .sort({ startsAt: 1 })
+            .lean();
+
+        if (!nextRound) {
+            return res.status(404).json({ success: false, message: "No upcoming round found" });
+        }
+
+        return res.json({
+            success: true,
+            data: {
+                period: nextRound.period,
+                startsAt: nextRound.startsAt,
+                predictedBigSmall: nextRound.predictedBigSmall,
+                predictedSetByAdmin: nextRound.predictedSetByAdmin,
+            },
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+/* ============================================================
+   ADMIN: SET NEXT ROUND PREDICTION (BIG / SMALL)
+   Overwrites predictedBigSmall on the next scheduled round.
+   Enforces the max-2-consecutive-loss rule: if the last 2
+   settled rounds both had wrong predictions (losses), the admin
+   MUST set the prediction that aligns with the forced win side,
+   because the outcome engine will force a win anyway and the
+   displayed prediction should match so users aren't misled.
+============================================================ */
+const setNextPrediction = async (req, res, next) => {
+    try {
+        const gamePath = req.path.replace("/nextPrediction", "");
+        const durationSeconds = DURATION_FROM_PATH[gamePath];
+        if (!durationSeconds) {
+            return res.status(400).json({ success: false, message: "Invalid WinGo game route" });
+        }
+        const game = GAME_BY_DURATION[durationSeconds];
+        if (!game) {
+            return res.status(404).json({ success: false, message: "WinGo game not found" });
+        }
+
+        const { prediction } = req.body;
+        const normalizedPrediction = (prediction || "").toString().toUpperCase();
+        if (normalizedPrediction !== BIG_SMALL_MAP.BIG && normalizedPrediction !== BIG_SMALL_MAP.SMALL) {
+            return res.status(400).json({ success: false, message: "prediction must be 'BIG' or 'SMALL'." });
+        }
+
+        const nextRound = await WinGoRound.findOne({
+            gameCode: game.gameCode,
+            status: { $in: ["scheduled", "open"] },
+            startsAt: { $gt: new Date() },
+        }).sort({ startsAt: 1 });
+
+        if (!nextRound) {
+            return res.status(404).json({ success: false, message: "No upcoming round found to set prediction on" });
+        }
+
+        // Enforce the max-2-consecutive-loss rule.
+        // Check the last 2 settled rounds with a prediction.
+        const recentRounds = await WinGoRound.find({
+            gameCode: game.gameCode,
+            status: "settled",
+            predictedBigSmall: { $ne: null },
+        })
+            .sort({ endsAt: -1 })
+            .limit(2)
+            .lean();
+
+        let consecutiveLosses = 0;
+        for (const r of recentRounds) {
+            if (r.predictedBigSmall && r.outcomeBigSmall && r.predictedBigSmall !== r.outcomeBigSmall) {
+                consecutiveLosses++;
+            } else {
+                break;
+            }
+        }
+
+        if (consecutiveLosses >= 2) {
+            // The outcome engine will force a WIN on this round, meaning the outcome WILL
+            // match the prediction. The admin must set the side they want users to win on.
+            // Any value is technically valid here (win will be forced), but we warn if the
+            // admin sets the opposite side of the last losing prediction so they are aware.
+            const lastLossPrediction = recentRounds[0]?.predictedBigSmall;
+            if (lastLossPrediction && normalizedPrediction !== lastLossPrediction) {
+                return res.status(400).json({
+                    success: false,
+                    message: `The last 2 rounds both had wrong predictions (consecutive losses). The outcome engine will force a WIN on this round, which means the outcome will match the prediction. You must set the same side as the current losing streak — set '${lastLossPrediction}' so the forced win makes sense to users.`,
+                });
+            }
+        }
+
+        nextRound.predictedBigSmall = normalizedPrediction;
+        nextRound.predictedSetByAdmin = true;
+        await nextRound.save();
+
+        const warning = consecutiveLosses >= 2
+            ? "2 consecutive losses detected — the outcome engine will force a WIN on this round to match your prediction."
+            : null;
+
+        return res.json({
+            success: true,
+            data: {
+                period: nextRound.period,
+                startsAt: nextRound.startsAt,
+                predictedBigSmall: nextRound.predictedBigSmall,
+                predictedSetByAdmin: true,
+            },
+            ...(warning ? { warning } : {}),
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+/* ============================================================
+   ADMIN: UNSET NEXT ROUND PREDICTION
+   Clears the admin-set prediction on the next scheduled round
+   so the system reverts to automatic random prediction.
+============================================================ */
+const unsetNextPrediction = async (req, res, next) => {
+    try {
+        const gamePath = req.path.replace("/nextPrediction", "");
+        const durationSeconds = DURATION_FROM_PATH[gamePath];
+        if (!durationSeconds) {
+            return res.status(400).json({ success: false, message: "Invalid WinGo game route" });
+        }
+        const game = GAME_BY_DURATION[durationSeconds];
+        if (!game) {
+            return res.status(404).json({ success: false, message: "WinGo game not found" });
+        }
+
+        const nextRound = await WinGoRound.findOne({
+            gameCode: game.gameCode,
+            status: { $in: ["scheduled", "open"] },
+            startsAt: { $gt: new Date() },
+        }).sort({ startsAt: 1 });
+
+        if (!nextRound) {
+            return res.status(404).json({ success: false, message: "No upcoming round found" });
+        }
+
+        if (!nextRound.predictedSetByAdmin) {
+            return res.status(400).json({ success: false, message: "No admin-set prediction exists on the next round to unset." });
+        }
+
+        nextRound.predictedBigSmall = null;
+        nextRound.predictedSetByAdmin = false;
+        await nextRound.save();
+
+        return res.json({
+            success: true,
+            message: "Next round prediction cleared. System will auto-generate a prediction.",
+            data: { period: nextRound.period, startsAt: nextRound.startsAt, predictedBigSmall: null, predictedSetByAdmin: false },
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export { placeBet, getCurrentRound, getGameHistory, getMyHistory, getAdminPrediction, setAdminPrediction, unsetAdminPrediction, getNextPrediction, setNextPrediction, unsetNextPrediction };

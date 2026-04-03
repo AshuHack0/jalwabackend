@@ -286,36 +286,24 @@ async function settleRound(roundId) {
 
 /* ============================================================
    SET NEXT ROUND PREDICTION
-   Called immediately after a round settles. Tallies BIG vs SMALL
-   bet amounts from the just-settled round and sets predictedBigSmall
-   on the next "scheduled" round (only if not already set).
-   Predicts the side with MORE total bet amount — users tend to
-   repeat the majority side, so this keeps the house edge aligned.
+   Called immediately after a round settles. Assigns a random
+   BIG/SMALL prediction to the next "scheduled" round so users
+   can see it before the round opens.
+   Skips rounds where admin has already pre-set a prediction
+   (predictedSetByAdmin: true or predictedBigSmall already set).
 ============================================================ */
-async function setNextRoundPrediction(gameCode, settledRoundId) {
+async function setNextRoundPrediction(gameCode) {
   try {
-    const bets = await WinGoBet.find(
-      { round: settledRoundId },
-      { choiceBigSmall: 1, amount: 1 }
-    ).lean();
+    const prediction = Math.random() < 0.5 ? BIG_SMALL_MAP.BIG : BIG_SMALL_MAP.SMALL;
 
-    let bigTotal = 0;
-    let smallTotal = 0;
-
-    for (const bet of bets) {
-      if (bet.choiceBigSmall === BIG_SMALL_MAP.BIG) bigTotal += bet.amount;
-      else if (bet.choiceBigSmall === BIG_SMALL_MAP.SMALL) smallTotal += bet.amount;
-    }
-
-    // Default to random if no big/small bets were placed
-    const prediction =
-      bigTotal === 0 && smallTotal === 0
-        ? Math.random() < 0.5 ? BIG_SMALL_MAP.BIG : BIG_SMALL_MAP.SMALL
-        : bigTotal >= smallTotal ? BIG_SMALL_MAP.BIG : BIG_SMALL_MAP.SMALL;
-
-    // Find the next scheduled round and stamp the prediction (atomic — only if still null)
+    // Only write if prediction not already set (preserves admin-set predictions)
     await WinGoRound.findOneAndUpdate(
-      { gameCode, status: "scheduled", predictedBigSmall: null },
+      {
+        gameCode,
+        status: "scheduled",
+        predictedBigSmall: null,
+        predictedSetByAdmin: { $ne: true },
+      },
       { $set: { predictedBigSmall: prediction } },
       { sort: { startsAt: 1 } }
     );
@@ -323,7 +311,7 @@ async function setNextRoundPrediction(gameCode, settledRoundId) {
     console.error("WinGo setNextRoundPrediction failed", gameCode, err);
     logErrorToDbAsync(err, {
       source: "winGoScheduler",
-      context: { gameCode, settledRoundId: settledRoundId?.toString(), action: "setNextRoundPrediction" },
+      context: { gameCode, action: "setNextRoundPrediction" },
     });
   }
 }
@@ -347,7 +335,7 @@ async function lockAndSettleExpiredRounds(gameCode, nowMs) {
     if (!round) break;
 
     await settleRound(round._id);
-    await setNextRoundPrediction(gameCode, round._id);
+    await setNextRoundPrediction(gameCode);
   }
 }
 
@@ -445,10 +433,15 @@ async function ensureCurrentRound(game, nowMs) {
 
   // Scheduled round's start time has arrived — activate it (atomic)
   if (round && round.status === "scheduled" && startsAt.getTime() <= nowMs) {
-    const autoPrediction = Math.random() < 0.5 ? BIG_SMALL_MAP.BIG : BIG_SMALL_MAP.SMALL;
+    // Only assign a random prediction if one hasn't already been set (e.g. by setNextRoundPrediction).
+    // Do NOT filter by predictedBigSmall: null — that would prevent activation when a prediction exists.
+    const updateFields = { status: "open" };
+    if (!round.predictedBigSmall) {
+      updateFields.predictedBigSmall = Math.random() < 0.5 ? BIG_SMALL_MAP.BIG : BIG_SMALL_MAP.SMALL;
+    }
     const activated = await WinGoRound.findOneAndUpdate(
-      { _id: round._id, status: "scheduled", predictedBigSmall: null },
-      { $set: { status: "open", predictedBigSmall: autoPrediction } },
+      { _id: round._id, status: "scheduled" },
+      { $set: updateFields },
       { returnDocument: "after" }
     );
     if (activated) justActivated = true;
