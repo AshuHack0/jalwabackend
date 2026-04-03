@@ -1,8 +1,21 @@
 import { v4 as uuidv4 } from "uuid";
+import axios from "axios";
 import Deposit from "../models/Deposit.js";
 import User from "../models/User.js";
 import { createUsdtDepositOrder, queryUsdtDepositOrder } from "../services/usdtService.js";
 import { env } from "../config/env.js";
+
+async function fetchUsdtToInrRate() {
+  try {
+    const res = await axios.get(
+      "https://api.coingecko.com/api/v3/simple/price?ids=tether&vs_currencies=inr",
+      { timeout: 5000 }
+    );
+    return res.data?.tether?.inr ?? 0;
+  } catch {
+    return 0;
+  }
+}
 
 /**
  * POST /api/v1/usdt/deposits/initiate
@@ -37,6 +50,8 @@ export const initiateUsdtDeposit = async (req, res, next) => {
       });
     }
 
+    const usdtToInrRate = await fetchUsdtToInrRate();
+
     const deposit = await Deposit.create({
       user: user._id,
       amount,
@@ -50,6 +65,7 @@ export const initiateUsdtDeposit = async (req, res, next) => {
       expireTime: gatewayResult.expireTime || null,
       isGatewayPayment: true,
       gateway: "usdt",
+      usdtToInrRate,
     });
 
     res.status(201).json({
@@ -103,8 +119,10 @@ export const getUsdtDepositStatus = async (req, res, next) => {
           deposit.gatewayOrderNo = gatewayStatus.orderno || deposit.gatewayOrderNo;
           await deposit.save();
 
+          const rate = deposit.usdtToInrRate > 0 ? deposit.usdtToInrRate : await fetchUsdtToInrRate();
+          const creditAmount = rate > 0 ? Math.floor(deposit.amount * rate) : deposit.amount;
           await User.findByIdAndUpdate(deposit.user, {
-            $inc: { walletBalance: deposit.amount, totalDeposited: deposit.amount },
+            $inc: { walletBalance: creditAmount, totalDeposited: creditAmount },
           });
         } else if (["fail", "timeOut", "exception"].includes(gatewayStatus.status)) {
           deposit.status = "failed";

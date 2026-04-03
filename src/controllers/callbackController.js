@@ -1,9 +1,22 @@
+import axios from "axios";
 import Deposit from "../models/Deposit.js";
 import User from "../models/User.js";
 import { verifyMcgindiamcCallbackSignature } from "../services/mcgindiamcService.js";
 import { verifyOxoxmgCallbackSignature } from "../services/oxoxmgService.js";
 import { verifyUsdtCallbackSignature } from "../services/usdtService.js";
 import { logErrorToDbAsync } from "../utils/logErrorToDb.js";
+
+async function fetchUsdtToInrRate() {
+  try {
+    const res = await axios.get(
+      "https://api.coingecko.com/api/v3/simple/price?ids=tether&vs_currencies=inr",
+      { timeout: 5000 }
+    );
+    return res.data?.tether?.inr ?? 0;
+  } catch {
+    return 0;
+  }
+}
 
 /**
  * POST /api/v1/payments/callback
@@ -227,10 +240,12 @@ export const handleUsdtCallback = async (req, res) => {
       deposit.gatewayOrderNo = orderno || deposit.gatewayOrderNo;
       await deposit.save();
 
+      const rate = deposit.usdtToInrRate > 0 ? deposit.usdtToInrRate : await fetchUsdtToInrRate();
+      const creditAmount = rate > 0 ? Math.floor(deposit.amount * rate) : deposit.amount;
       await User.findByIdAndUpdate(deposit.user, {
         $inc: {
-          walletBalance: deposit.amount,
-          totalDeposited: deposit.amount,
+          walletBalance: creditAmount,
+          totalDeposited: creditAmount,
         },
       });
     } else if (status === "fail" || status === "exception") {

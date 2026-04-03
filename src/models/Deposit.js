@@ -73,6 +73,11 @@ const depositSchema = new mongoose.Schema(
       enum: ["mcgindiamc", "oxoxmg", "usdt"],
       default: "mcgindiamc",
     },
+    // For USDT deposits: the USDT→INR rate at time of order creation, used to credit wallet in INR
+    usdtToInrRate: {
+      type: Number,
+      default: 0,
+    },
   },
   {
     timestamps: true,
