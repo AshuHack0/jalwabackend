@@ -1,5 +1,6 @@
 import express from "express";
 import authRoutes from "./authRoutes.js";
+import customerSupportRoutes from "./customerSupportRoutes.js";
 import winGoRoutes from "./winGoRoutes.js";
 import promotionRoutes from "./promotionRoutes.js";
 import telegramRoutes from "./telegramRoutes.js";
@@ -57,6 +58,9 @@ routes.use("/oxoxmg/deposits", oxoxmgDepositRoutes);
 
 // USDT deposit routes.
 routes.use("/usdt/deposits", usdtDepositRoutes);
+
+// Customer support routes.
+routes.use("/customer-support", customerSupportRoutes);
 
 // Simple health/welcome endpoint for the API root.
 routes.get("/", (_req, res) => {

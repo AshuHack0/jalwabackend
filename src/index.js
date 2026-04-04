@@ -1,5 +1,6 @@
 import express from "express";
 import cors from "cors";
+import path from "path";
 import routes from "./routes/index.js";
 import morgan from "morgan";
 import { env } from "./config/env.js";
@@ -13,10 +14,14 @@ const app = express();
 app.use(cors({ origin: "*" }));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+
+// Serve uploaded support files as static assets
+// Accessible at: GET /uploads/support/<filename>
+app.use("/uploads", express.static(path.resolve("uploads")));
 app.use(morgan(env.NODE_ENV === "development" ? "dev" : "combined"));
 
 // Root route
-app.get("/", (req, res) => {
+app.get("/", (_req, res) => {
   res.status(200).json({
     message: "Welcome to Jalwa Backend API",
     version: "1.0.0",
@@ -27,7 +32,7 @@ app.get("/", (req, res) => {
 app.use("/api/v1", routes);
 
 // 404 Handler
-app.use((req, res) => {
+app.use((_req, res) => {
   res.status(404).json({
     success: false,
     message: "Route not found",
@@ -35,7 +40,7 @@ app.use((req, res) => {
 });
 
 // Error Handler
-app.use((err, req, res, next) => {
+app.use((err, req, res, _next) => {
   console.error(err.stack);
   logErrorToDbAsync(err, { source: "express", context: { statusCode: 500 }, req });
   res.status(500).json({
