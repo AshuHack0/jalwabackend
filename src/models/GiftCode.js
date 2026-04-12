@@ -32,6 +32,13 @@ const giftCodeSchema = new mongoose.Schema(
             type: Boolean,
             default: true,
         },
+        // Users who have successfully redeemed this code (prevents double redeem)
+        redeemedBy: [
+            {
+                type: mongoose.Schema.Types.ObjectId,
+                ref: "User",
+            },
+        ],
     },
     { timestamps: true }
 );

@@ -72,6 +72,8 @@ const userSchema = new mongoose.Schema(
         ifscCode: { type: String, default: "", trim: true },
         bankPhone: { type: String, default: "", trim: true },
         bankEmail: { type: String, default: "", trim: true },
+        // Gift code assigned to this user to share (set once, never changes)
+        assignedGiftCode: { type: String, default: null, trim: true },
     },
     {
         timestamps: true,
