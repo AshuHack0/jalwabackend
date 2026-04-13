@@ -5,6 +5,7 @@ import {
     getMe,
     getWalletBalance,
     changePassword,
+    updateNickname,
 } from "../controllers/authController.js";
 import { protect } from "../middleware/authMiddleware.js";
 import { validate } from "../middleware/validateMiddleware.js";
@@ -26,5 +27,8 @@ router.get("/wallet", protect, getWalletBalance);
 
 // Changes authenticated user's password.
 router.patch("/password", protect, changePassword);
+
+// Updates authenticated user's nickname.
+router.patch("/nickname", protect, updateNickname);
 
 export default router;

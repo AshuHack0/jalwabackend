@@ -162,6 +162,37 @@ export const changePassword = async (req, res, next) => {
     }
 };
 
+// Updates the authenticated user's nickname.
+export const updateNickname = async (req, res, next) => {
+    try {
+        const { nickname } = req.body;
+
+        if (!nickname || typeof nickname !== "string" || !nickname.trim()) {
+            return res.status(400).json({ success: false, message: "nickname is required" });
+        }
+
+        const trimmed = nickname.trim();
+
+        const existing = await User.findOne({ nickname: trimmed });
+        if (existing && existing._id.toString() !== req.user.id) {
+            return res.status(409).json({ success: false, message: "Nickname already taken" });
+        }
+
+        const user = await User.findByIdAndUpdate(
+            req.user.id,
+            { nickname: trimmed },
+            { new: true }
+        );
+
+        res.status(200).json({
+            success: true,
+            data: { nickname: user.nickname },
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
 // Returns the currently authenticated user's profile.
 export const getMe = async (req, res, next) => {
     try {
