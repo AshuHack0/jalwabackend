@@ -17,7 +17,7 @@ const placeBet = async (req, res, next) => {
     try {
         const user = req.user;
 
-        if ((user.walletBalance || 0) < MIN_DEPOSIT_FOR_PREDICTION) {
+        if ((user.totalDeposited || 0) < MIN_DEPOSIT_FOR_PREDICTION) {
             return res.status(403).json({
                 success: false,
                 message: "You must at least 2000 to activate WinGo predictions.",
