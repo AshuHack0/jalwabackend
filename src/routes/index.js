@@ -14,6 +14,7 @@ import callbackRoutes from "./callbackRoutes.js";
 import bankAccountRoutes from "./bankAccountRoutes.js";
 import oxoxmgDepositRoutes from "./oxoxmgDepositRoutes.js";
 import usdtDepositRoutes from "./usdtDepositRoutes.js";
+import adminSupportRoutes from "./adminSupportRoutes.js";
 
 const routes = express.Router();
 
@@ -61,6 +62,9 @@ routes.use("/usdt/deposits", usdtDepositRoutes);
 
 // Customer support routes.
 routes.use("/customer-support", customerSupportRoutes);
+
+// Admin support ticket management.
+routes.use("/admin/support-tickets", adminSupportRoutes);
 
 // Simple health/welcome endpoint for the API root.
 routes.get("/", (_req, res) => {
