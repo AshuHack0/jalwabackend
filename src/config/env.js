@@ -7,7 +7,7 @@ export const env = {
   MONGODB_URI: process.env.MONGODB_URI || "mongodb://localhost:27017/jalwa",
   JWT_SECRET: process.env.JWT_SECRET || "your_super_secret_jwt_key_jalwa_2024",
   JWT_EXPIRES_IN: process.env.JWT_EXPIRES_IN || "30d",
-  INVITE_CODE: process.env.INVITE_CODE || "123456",
+  INVITE_CODE: process.env.INVITE_CODE || "22644115085",
 
   // Backend production URL — must be publicly reachable by the payment gateway
   BACKEND_URL: process.env.BACKEND_URL || "https://api.indgames.online",
