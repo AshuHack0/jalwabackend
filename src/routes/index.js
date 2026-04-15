@@ -1,5 +1,6 @@
 import express from "express";
 import authRoutes from "./authRoutes.js";
+import transactionRoutes from "./transactionRoutes.js";
 import customerSupportRoutes from "./customerSupportRoutes.js";
 import winGoRoutes from "./winGoRoutes.js";
 import promotionRoutes from "./promotionRoutes.js";
@@ -59,6 +60,9 @@ routes.use("/oxoxmg/deposits", oxoxmgDepositRoutes);
 
 // USDT deposit routes.
 routes.use("/usdt/deposits", usdtDepositRoutes);
+
+// Transaction history routes.
+routes.use("/transactions", transactionRoutes);
 
 // Customer support routes.
 routes.use("/customer-support", customerSupportRoutes);
