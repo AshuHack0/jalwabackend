@@ -7,7 +7,36 @@ export const listUsers = async (req, res, next) => {
 
         const filter = { role: "user" };
         if (phone) filter.phone = { $regex: phone, $options: "i" };
-        if (uid) filter.uid = { $regex: uid, $options: "i" };
+        if (uid) {
+            // Admin UI shows UID as the last 7 digits of _id (non-digits stripped,
+            // left-padded to 7). Match that derivation server-side.
+            filter.$expr = {
+                $let: {
+                    vars: {
+                        digits: {
+                            $reduce: {
+                                input: { $regexFindAll: { input: { $toString: "$_id" }, regex: /\d/ } },
+                                initialValue: "",
+                                in: { $concat: ["$$value", "$$this.match"] },
+                            },
+                        },
+                    },
+                    in: {
+                        $regexMatch: {
+                            input: {
+                                $cond: [
+                                    { $gte: [{ $strLenCP: "$$digits" }, 7] },
+                                    { $substrCP: ["$$digits", { $subtract: [{ $strLenCP: "$$digits" }, 7] }, 7] },
+                                    "$$digits",
+                                ],
+                            },
+                            regex: uid,
+                            options: "i",
+                        },
+                    },
+                },
+            };
+        }
         if (req.query.isBanned !== undefined) filter.isBanned = req.query.isBanned === "true";
 
         const skip = (parseInt(page, 10) - 1) * parseInt(limit, 10);
